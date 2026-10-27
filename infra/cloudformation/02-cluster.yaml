@@ -1,0 +1,10 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Custodian AI — Cluster Infrastructure (Disposable Stack).
+  Contains Amazon EKS Cluster, Spot Managed Node Groups, Security Groups,
+  and optional RDS PostgreSQL db.t3.micro for live demos.
+  Created for demo sessions and torn down immediately afterwards.
+  Will be populated in Sprint 1.
+
+# Resources will be defined in Sprint 1
+Resources: {}

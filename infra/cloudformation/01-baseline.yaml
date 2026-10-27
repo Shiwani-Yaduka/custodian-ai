@@ -1,0 +1,9 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Custodian AI — Baseline Infrastructure (Long-Lived Stack).
+  Contains VPC, subnets, S3 evidence bucket (KMS encrypted, lifecycle expiry),
+  KMS keys, and GitHub Actions OIDC deploy roles.
+  Will be populated in Sprint 1.
+
+# Resources will be defined in Sprint 1
+Resources: {}

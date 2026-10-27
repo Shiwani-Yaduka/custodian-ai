@@ -1,0 +1,24 @@
+# Docker Compose configuration for Custodian AI (Local Development)
+# Starts local backing stores (Redis for session state, PostgreSQL for evidence ledger)
+# Day-to-day development runs 100% locally without cloud spend.
+
+services:
+  # D1: Session State (Redis)
+  redis:
+    image: redis:7-alpine
+    container_name: custodian-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # D2: Evidence Ledger (PostgreSQL 16)
+  postgres:
+    image: postgres:16-alpine
+    container_name: custodian-postgres
+    environment:
+      POSTGRES_DB: custodian_ledger
+      POSTGRES_USER: custodian_user
+      POSTGRES_PASSWORD: custodian_dev_password # Local development only; never used in production
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
