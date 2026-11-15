@@ -7,8 +7,8 @@ import { EvidenceRecordModal } from './EvidenceRecordModal';
 
 interface ExamScreenProps {
   sessionId: string;
-  stream: MediaStream;
-  detector: FaceDetector;
+  stream: MediaStream | null;
+  detector: FaceDetector | null;
   baseline: CalibrationBaseline;
   isPractice: boolean;
   onExamSubmitted: () => void;
@@ -133,8 +133,20 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
         .getExams()
         .then((exams) => {
           if (exams && exams.length > 0) {
-            setExam(exams[0]);
-            setSecondsRemaining(exams[0].duration_minutes * 60);
+            const remoteExam = exams[0];
+            const validQuestions =
+              remoteExam.questions && remoteExam.questions.length > 0
+                ? remoteExam.questions
+                : FALLBACK_EXAM.questions;
+
+            setExam({
+              id: remoteExam.id || 1,
+              title: remoteExam.title || FALLBACK_EXAM.title,
+              description: remoteExam.description || FALLBACK_EXAM.description,
+              duration_minutes: remoteExam.duration_minutes || FALLBACK_EXAM.duration_minutes,
+              questions: validQuestions,
+            });
+            setSecondsRemaining((remoteExam.duration_minutes || 30) * 60);
           }
         })
         .catch((err) => {
@@ -145,7 +157,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
 
   // 2. Start Video & In-Browser 5 FPS Detection Loop
   useEffect(() => {
-    if (videoRef.current) {
+    if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
       videoRef.current.play().catch(() => {});
     }
@@ -155,17 +167,19 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
       onAudioLevel: (lvl) => setAudioLevel(lvl),
       onFpsUpdated: (fps) => setCurrentFps(fps),
     });
-    batcher.attachAudioStream(stream);
+    if (stream) {
+      batcher.attachAudioStream(stream);
+    }
     batcher.start();
     batcherRef.current = batcher;
 
     // 5 FPS detection loop (every 200ms)
     const detectInterval = setInterval(() => {
-      if (!videoRef.current) return;
+      if (!videoRef.current || !detector) return;
       const sample = detector.processVideoFrame(videoRef.current, performance.now());
       latestSampleRef.current = sample;
       setFacePresent(sample.face_present);
-      batcher.updateFaceSample(sample, stream.active);
+      batcher.updateFaceSample(sample, stream ? stream.active : true);
     }, 200);
 
     return () => {
@@ -360,7 +374,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
                 onExamSubmitted();
               }}
             >
-              {exam.questions.map((q, idx) => (
+              {(exam.questions || FALLBACK_EXAM.questions).map((q, idx) => (
                 <div key={q.id} className="question-block">
                   <div className="question-prompt">
                     {idx + 1}. {q.prompt}

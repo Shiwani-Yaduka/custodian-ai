@@ -9,6 +9,7 @@ Provides:
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from typing import Any, Dict, Optional
@@ -182,24 +183,51 @@ def login(req: LoginRequest):
 
 @app.get("/exams")
 def list_exams():
-    """List all available exams."""
+    """List all available exams with questions."""
     exam = repo.get_exam(1)
     if not exam:
-        # Provide default exam metadata if not seeded
         return [
             {
                 "id": 1,
                 "title": "Demo Exam",
                 "description": "Adaptive proctoring demo exam (10 MCQs + 2 Written)",
                 "duration_minutes": 30,
+                "questions": [],
             }
         ]
+
+    questions = []
+    clean_description = "Adaptive proctoring demo exam (10 MCQs + 2 Written Questions)"
+    if exam.description:
+        try:
+            raw = json.loads(exam.description)
+            if isinstance(raw, dict):
+                for mcq in raw.get("multiple_choice", []):
+                    questions.append({
+                        "id": f"q{mcq.get('id', len(questions) + 1)}",
+                        "type": "mcq",
+                        "prompt": mcq.get("question", ""),
+                        "options": mcq.get("options", []),
+                    })
+                for w in raw.get("written_questions", raw.get("written", [])):
+                    questions.append({
+                        "id": f"q_w{w.get('id', len(questions) + 1)}",
+                        "type": "written",
+                        "prompt": w.get("question", w.get("prompt", "")),
+                    })
+            elif isinstance(raw, list):
+                questions = raw
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.debug(f"Description is plain text, not JSON: {e}")
+            clean_description = exam.description
+
     return [
         {
             "id": exam.id,
             "title": exam.title,
-            "description": exam.description,
+            "description": clean_description,
             "duration_minutes": exam.duration_minutes,
+            "questions": questions,
         }
     ]
 

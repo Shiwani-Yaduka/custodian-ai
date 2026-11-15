@@ -156,6 +156,20 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
             <div style={{ fontWeight: 700, color: '#0f172a' }}>{currentSample?.gaze_offset_x ?? '0.00'}</div>
           </div>
         </div>
+
+        <div style={{ marginTop: 14, textAlign: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ fontSize: '0.8rem', padding: '4px 12px', color: '#64748b' }}
+            onClick={() => {
+              isDoneRef.current = true;
+              onCalibrationComplete(calculateBaseline(samplesRef.current));
+            }}
+          >
+            Skip to Exam (Use Current Baseline)
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -234,7 +234,10 @@ def cmd_run():
             health_path = "/" if port == 5173 else "/health"
             print(f"  ✓ {name:<15} -> http://127.0.0.1:{port} (health: http://127.0.0.1:{port}{health_path})")
         print("\nReady! Open http://127.0.0.1:5173 in your browser.")
-        print("To stop all services cleanly, run: python scripts/dev.py stop (or press Ctrl+C)", flush=True)
+        print(
+            "To stop all services cleanly, run: python scripts/dev.py stop (or press Ctrl+C)",
+            flush=True,
+        )
         sys.stdout.flush()
 
         if "--detach" in sys.argv:

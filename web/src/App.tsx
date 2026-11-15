@@ -101,12 +101,24 @@ export const App: React.FC = () => {
         />
       )}
 
-      {currentScreen === 'exam' && mediaStream && detector && baseline && (
+      {currentScreen === 'exam' && (
         <ExamScreen
           sessionId={sessionId}
           stream={mediaStream}
           detector={detector}
-          baseline={baseline}
+          baseline={
+            baseline || {
+              mean_gaze_offset: 0.15,
+              std_gaze_offset: 0.05,
+              mean_head_yaw: 0.0,
+              std_head_yaw: 0.08,
+              mean_head_pitch: 0.0,
+              std_head_pitch: 0.08,
+              mean_face_size: 0.35,
+              std_face_size: 0.05,
+              sample_count: 0,
+            }
+          }
           isPractice={isPractice}
           onExamSubmitted={handleExamSubmitted}
         />
