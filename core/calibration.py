@@ -230,7 +230,7 @@ class CalibrationDetector:
                 Observation(
                     session_id=batch.session_id,
                     signal="network_drop",
-                    confidence=0.92,
+                    confidence=0.55,  # Network anomalies carry uncertainty (<0.60 opens case)
                     duration=dur_net,
                     timestamp=batch.timestamp,
                 )

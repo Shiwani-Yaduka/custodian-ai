@@ -2,7 +2,16 @@
  * API client for Custodian AI backend microservices.
  */
 import { CONFIG } from './config';
-import { Exam, StudentTimelineItem, UserSession } from './types';
+import {
+  Exam,
+  FacultyTimeline,
+  HeldSessionItem,
+  MassFlagStatus,
+  ScenarioMeta,
+  ScenarioResult,
+  StudentTimelineItem,
+  UserSession,
+} from './types';
 
 export interface PendingProbe {
   probe_name: string;
@@ -127,5 +136,75 @@ export const api = {
     } catch {
       return null;
     }
+  },
+
+  async getHeldSessions(token: string): Promise<HeldSessionItem[]> {
+    const res = await fetch(`${CONFIG.REVIEW_REPORT_URL}/faculty/sessions/held`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to load held sessions');
+    return res.json();
+  },
+
+  async getFacultySessionDetail(token: string, sessionId: string): Promise<FacultyTimeline> {
+    const res = await fetch(`${CONFIG.REVIEW_REPORT_URL}/faculty/session/${sessionId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to load session details');
+    return res.json();
+  },
+
+  async submitFacultyDecision(
+    token: string,
+    sessionId: string,
+    verdict: string,
+    notes: string
+  ): Promise<void> {
+    const res = await fetch(`${CONFIG.REVIEW_REPORT_URL}/faculty/decision`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        verdict,
+        notes,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to submit faculty decision');
+  },
+
+  getFacultyReportHtmlUrl(sessionId: string): string {
+    return `${CONFIG.REVIEW_REPORT_URL}/faculty/report/${sessionId}/html`;
+  },
+
+  async getMassFlagStatus(): Promise<MassFlagStatus> {
+    const res = await fetch(`${CONFIG.REVIEW_REPORT_URL}/system/mass_flag`);
+    if (!res.ok) throw new Error('Failed to fetch mass-flag status');
+    return res.json();
+  },
+
+  async getScenarios(): Promise<ScenarioMeta[]> {
+    const res = await fetch(`${CONFIG.REVIEW_REPORT_URL}/scenarios`);
+    if (!res.ok) throw new Error('Failed to fetch demo scenarios');
+    return res.json();
+  },
+
+  async runScenario(scenarioId: string, sessionId?: string): Promise<ScenarioResult> {
+    const url = new URL(`${CONFIG.REVIEW_REPORT_URL}/scenarios/run/${scenarioId}`);
+    if (sessionId) url.searchParams.set('session_id', sessionId);
+    const res = await fetch(url.toString(), { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Scenario execution failed' }));
+      throw new Error(err.detail || 'Scenario execution failed');
+    }
+    return res.json();
+  },
+
+  async resetScenarioSession(sessionId: string): Promise<void> {
+    await fetch(`${CONFIG.REVIEW_REPORT_URL}/scenarios/reset/${sessionId}`, {
+      method: 'POST',
+    }).catch((err) => console.warn('[API] Reset failed:', err));
   },
 };

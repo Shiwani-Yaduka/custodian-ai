@@ -127,7 +127,13 @@ export const EvidenceRecordModal: React.FC<EvidenceRecordModalProps> = ({
               </h3>
 
               {timeline.length === 0 ? (
-                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No anomalies or warnings have been recorded.</p>
+                <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
+                  <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>🌱</div>
+                  <div>No anomalies or notices have been recorded for your session.</div>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 4 }}>
+                    Your session is in CLEAR standing.
+                  </div>
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {timeline.map((item, idx) => (
@@ -136,9 +142,18 @@ export const EvidenceRecordModal: React.FC<EvidenceRecordModalProps> = ({
                       style={{
                         padding: 12,
                         borderRadius: 6,
-                        border: '1px solid #e2e8f0',
+                        border:
+                          item.type === 'explanation'
+                            ? '1.5px solid #93c5fd'
+                            : item.severity === 'alert'
+                            ? '1.5px solid #fca5a5'
+                            : item.severity === 'warning'
+                            ? '1.5px solid #fde68a'
+                            : '1px solid #e2e8f0',
                         background:
-                          item.severity === 'alert'
+                          item.type === 'explanation'
+                            ? '#eff6ff'
+                            : item.severity === 'alert'
                             ? '#fef2f2'
                             : item.severity === 'warning'
                             ? '#fffbeb'
@@ -146,10 +161,14 @@ export const EvidenceRecordModal: React.FC<EvidenceRecordModalProps> = ({
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600, color: '#1e293b' }}>{item.title}</span>
+                        <span style={{ fontWeight: 600, color: item.type === 'explanation' ? '#1e40af' : '#1e293b' }}>
+                          {item.type === 'explanation' ? '💬 Your Submitted Explanation' : item.title}
+                        </span>
                         <span>{item.timestamp}</span>
                       </div>
-                      <p style={{ fontSize: '0.88rem', color: '#334155' }}>{item.description}</p>
+                      <p style={{ fontSize: '0.88rem', color: item.type === 'explanation' ? '#1e3a8a' : '#334155', fontStyle: item.type === 'explanation' ? 'italic' : 'normal', margin: 0 }}>
+                        {item.description}
+                      </p>
                     </div>
                   ))}
                 </div>

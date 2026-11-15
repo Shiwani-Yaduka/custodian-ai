@@ -109,6 +109,7 @@ class FacultyTimeline(BaseModel):
     student_explanations: List[Dict[str, Any]] = Field(default_factory=list)
     hold_summary: Optional[str] = None
     faculty_decisions: List[Dict[str, Any]] = Field(default_factory=list)
+    observations: List[Dict[str, Any]] = Field(default_factory=list)
     recommendation: str
 
 
@@ -340,6 +341,18 @@ def build_faculty_timeline(session_id: str, repo: LedgerRepository) -> FacultyTi
         for fd in fdecs
     ]
 
+    # Observations
+    raw_obs = repo.get_observations(session_id)
+    observations_list = [
+        {
+            "signal": o.signal,
+            "duration": o.duration,
+            "confidence": o.confidence,
+            "timestamp": o.timestamp,
+        }
+        for o in raw_obs
+    ]
+
     # Recommendation
     if holds:
         recommendation = (
@@ -367,5 +380,6 @@ def build_faculty_timeline(session_id: str, repo: LedgerRepository) -> FacultyTi
         student_explanations=student_explanations,
         hold_summary=hold_summary,
         faculty_decisions=faculty_decisions,
+        observations=observations_list,
         recommendation=recommendation,
     )

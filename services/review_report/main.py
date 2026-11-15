@@ -26,6 +26,8 @@ from core.ledger import (
     build_faculty_timeline,
     build_student_record,
 )
+from core.ledger.report import generate_faculty_html_report
+from core.scenarios import SCENARIOS_META, ScenarioResult, ScenarioRunner
 from shared.auth import create_access_token, decode_access_token, hash_password, verify_password
 from shared.config import get_settings
 from shared.logging import setup_json_logging
@@ -368,6 +370,88 @@ def get_faculty_report(
         "faculty_decisions": timeline.faculty_decisions,
         "timeline": timeline,
     }
+
+
+@app.get("/faculty/report/{session_id}/html", response_class=Response)
+def get_faculty_report_html(
+    session_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Generate printable HTML audit report."""
+    if current_user.get("role") != "faculty":
+        raise HTTPException(status_code=403, detail="Faculty authorization required")
+
+    timeline = build_faculty_timeline(session_id, repo)
+    sess = repo.get_session(session_id)
+    student_name = "Candidate"
+    if sess and sess.student_id:
+        user = repo.get_user_by_id(sess.student_id)
+        if user:
+            student_name = user.username
+
+    html_content = generate_faculty_html_report(
+        session_id=session_id,
+        student_username=student_name,
+        timeline=timeline,
+    )
+    return Response(content=html_content, media_type="text/html")
+
+
+# --- Demonstration & Scenario Simulator APIs ---
+
+_mass_flag_state = {
+    "triggered": False,
+    "notice": "possible platform/network failure, staff alerted",
+    "relaxation_factor": 1.5,
+    "affected_ratio": 0.40,
+    "updated_at": time.time(),
+}
+
+
+@app.get("/system/mass_flag")
+def get_mass_flag_status():
+    """Retrieve global platform mass-flag relaxation status."""
+    return _mass_flag_state
+
+
+@app.post("/system/mass_flag/toggle")
+def toggle_mass_flag(triggered: bool = True):
+    """Toggle mass-flag state for demonstration."""
+    _mass_flag_state["triggered"] = triggered
+    _mass_flag_state["updated_at"] = time.time()
+    return _mass_flag_state
+
+
+@app.get("/scenarios")
+def list_scenarios():
+    """List all available scripted demonstration scenarios from AGENTS.md Section 9."""
+    return SCENARIOS_META
+
+
+@app.post("/scenarios/run/{scenario_id}", response_model=ScenarioResult)
+def run_demo_scenario(scenario_id: str, session_id: Optional[str] = None):
+    """Execute a scripted scenario sequence through the real proctoring pipeline."""
+    runner = ScenarioRunner(repo=repo)
+    try:
+        result = runner.run_scenario(scenario_id, session_id=session_id)
+        if scenario_id == "mass_flag":
+            _mass_flag_state["triggered"] = True
+            _mass_flag_state["updated_at"] = time.time()
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.error(f"Error executing scenario {scenario_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Scenario execution failed: {e}") from e
+
+
+@app.post("/scenarios/reset/{session_id}")
+def reset_demo_session(session_id: str):
+    """Reset a demo session in the database."""
+    repo.update_session_status(session_id, "active")
+    _mass_flag_state["triggered"] = False
+    _mass_flag_state["updated_at"] = time.time()
+    return {"status": "reset", "session_id": session_id}
 
 
 if __name__ == "__main__":

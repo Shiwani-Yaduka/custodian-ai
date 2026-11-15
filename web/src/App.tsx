@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from './api';
 import { FaceDetector } from './detection/faceLandmarker';
 import { CalibrationBaseline, UserSession } from './types';
@@ -8,23 +8,44 @@ import { PermissionScreen } from './screens/PermissionScreen';
 import { CalibrationScreen } from './screens/CalibrationScreen';
 import { ExamScreen } from './screens/ExamScreen';
 import { SubmittedScreen } from './screens/SubmittedScreen';
+import { FacultyPortal } from './screens/FacultyPortal';
+import { ScenarioPanel } from './screens/ScenarioPanel';
 
-type ScreenState = 'login' | 'consent' | 'permission' | 'calibration' | 'exam' | 'submitted';
+type ScreenState = 'login' | 'consent' | 'permission' | 'calibration' | 'exam' | 'submitted' | 'faculty';
 
 export const App: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState<ScreenState>('login');
   const [session, setSession] = useState<UserSession | null>(null);
   const [sessionId, setSessionId] = useState<string>('');
   const [isPractice, setIsPractice] = useState<boolean>(false);
+  const [isDemoOpen, setIsDemoOpen] = useState<boolean>(false);
 
   // Hardware and Detection state
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [detector, setDetector] = useState<FaceDetector | null>(null);
   const [baseline, setBaseline] = useState<CalibrationBaseline | null>(null);
 
+  // Global hotkey 'd' to open demo scenario simulator
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+      if (e.key === 'd' || e.key === 'D') {
+        setIsDemoOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleLoginSuccess = async (userSession: UserSession, practiceMode: boolean) => {
     setSession(userSession);
     setIsPractice(practiceMode);
+
+    if (userSession.role === 'faculty') {
+      setCurrentScreen('faculty');
+      return;
+    }
 
     if (practiceMode) {
       setSessionId(`PRACTICE-${Date.now().toString().slice(-6)}`);
@@ -83,8 +104,47 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="app-container">
+    <div className="app-container" style={{ position: 'relative' }}>
+      {/* Top Demo Trigger Button */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 12,
+          right: 12,
+          zIndex: 900,
+        }}
+      >
+        <button
+          onClick={() => setIsDemoOpen(true)}
+          style={{
+            background: '#1e293b',
+            color: '#ffffff',
+            border: '1px solid #475569',
+            padding: '6px 12px',
+            borderRadius: 6,
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+          title="Press 'D' key anywhere to toggle scenario simulator"
+        >
+          🧪 Demo Scenarios <span style={{ background: '#334155', padding: '1px 5px', borderRadius: 3, fontSize: '0.7rem' }}>D</span>
+        </button>
+      </div>
+
       {currentScreen === 'login' && <LoginScreen onLoginSuccess={handleLoginSuccess} />}
+
+      {currentScreen === 'faculty' && session && (
+        <FacultyPortal
+          session={session}
+          onSignOut={handleSignOut}
+          onOpenDemo={() => setIsDemoOpen(true)}
+        />
+      )}
 
       {currentScreen === 'consent' && (
         <ConsentScreen onConsentGiven={handleConsentGiven} onBack={() => setCurrentScreen('login')} />
@@ -136,6 +196,13 @@ export const App: React.FC = () => {
           onSignOut={handleSignOut}
         />
       )}
+
+      {/* Scripted Scenario Simulator Panel (DEMO MODE) */}
+      <ScenarioPanel
+        isOpen={isDemoOpen}
+        onClose={() => setIsDemoOpen(false)}
+        activeSessionId={sessionId}
+      />
     </div>
   );
 };

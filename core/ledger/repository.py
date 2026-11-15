@@ -58,6 +58,11 @@ class LedgerRepository(ABC):
         pass
 
     @abstractmethod
+    def get_user_by_id(self, user_id: int) -> Optional[User]:
+        """Fetch user by primary key id."""
+        pass
+
+    @abstractmethod
     def create_exam(
         self,
         title: str,
@@ -333,6 +338,10 @@ class SQLAlchemyLedgerRepository(LedgerRepository):
     def get_user(self, username: str) -> Optional[User]:
         with self._get_session() as session:
             return session.query(User).filter(User.username == username).first()
+
+    def get_user_by_id(self, user_id: int) -> Optional[User]:
+        with self._get_session() as session:
+            return session.query(User).filter(User.id == user_id).first()
 
     def create_exam(
         self,
