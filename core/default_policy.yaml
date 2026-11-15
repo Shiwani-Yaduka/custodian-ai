@@ -1,0 +1,120 @@
+# Custodian AI — Default Risk Policy Configuration
+# All parameters are strictly validated on load.
+# Formula Reference: AGENTS.md Section 5
+
+version: "1.0"
+
+# Channel Accumulator Caps (K_c)
+# CRITICAL RULE: Every K_c must be strictly below the WARNED threshold (45).
+# Default K_c = 40 guarantees that a single failing sensor (e.g., broken webcam)
+# can NEVER escalate a student into WARNED or cause an exam disruption by itself.
+channel_caps:
+  camera: 40.0
+  microphone: 40.0
+  exam_window: 40.0
+  device: 40.0
+
+# Temporal Decay Parameters
+# H = Half-life in seconds (240 s = 4 minutes).
+# Observation weight halves every H seconds: w(t) = w_0 * 2^(-dt / H)
+half_life_seconds: 240.0
+
+# Corroboration Multiplier (lambda)
+# When m distinct channels contribute risk above epsilon:
+# Multiplier = 1 + lambda * (m - 1). With lambda = 0.20:
+# 1 channel  -> 1.00x (plain score, capped at K_c)
+# 2 channels -> 1.20x (+20% corroboration boost)
+# 3 channels -> 1.40x (+40% corroboration boost)
+# 4 channels -> 1.60x (+60% corroboration boost)
+corroboration_lambda: 0.20
+
+# Active Channel Threshold (epsilon)
+# A channel counts as contributing to corroboration only if its accumulator > epsilon.
+contributing_epsilon: 2.0
+
+# Repetition Escalation Parameters
+# r_i = 1 + step * min(n - 1, max_steps) for occurrences within window_seconds.
+repetition:
+  step: 0.35              # +35% weight per repeated incident
+  max_steps: 4            # Caps repetition multiplier at 1 + (0.35 * 4) = 2.40x
+  window_seconds: 300.0   # 5-minute rolling window for repetition count
+
+# Hysteresis Duration
+# A candidate tier transition must hold continuously for 6 seconds before activating.
+# Prevents tier flapping when score hovers near a boundary.
+hysteresis_seconds: 6.0
+
+# Tier Thresholds (Lower bounds, inclusive)
+# Score Range: 0 to 100
+tier_thresholds:
+  CLEAR: 0.0        # 0 - 24: Normal exam progress, nothing shown
+  WATCHING: 25.0    # 25 - 44: Internal tracking only, nothing shown
+  WARNED: 45.0      # 45 - 64: First visible student warning (requires 2 channels in A3)
+  ELEVATED: 65.0    # 65 - 79: Second warning + time off clock (requires 2 channels)
+  HELD: 80.0        # 80 - 100: Exam paused for human faculty review
+
+# Signal Definition Table
+# b_s = Base weight
+# g_s = Grace duration in seconds (duration < g_s contributes exactly 0)
+# f_s = Full-weight duration in seconds (duration >= f_s contributes 100% of b_s)
+# channel = Sensory channel (camera, microphone, exam_window, device)
+signals:
+  face_absent:
+    channel: camera
+    b_s: 12.0
+    g_s: 5.0
+    f_s: 30.0
+
+  gaze_off_screen:
+    channel: camera
+    b_s: 8.0
+    g_s: 4.0
+    f_s: 20.0
+
+  head_turn:
+    channel: camera
+    b_s: 8.0
+    g_s: 4.0
+    f_s: 20.0
+
+  multiple_faces:
+    channel: camera
+    b_s: 18.0
+    g_s: 2.0
+    f_s: 10.0
+
+  speech_detected:
+    channel: microphone
+    b_s: 10.0
+    g_s: 5.0
+    f_s: 30.0
+
+  window_blur:
+    channel: exam_window
+    b_s: 15.0
+    g_s: 3.0
+    f_s: 20.0
+
+  tab_hidden:
+    channel: exam_window
+    b_s: 18.0
+    g_s: 2.0
+    f_s: 15.0
+
+  network_drop:
+    channel: device
+    b_s: 4.0
+    g_s: 10.0
+    f_s: 60.0
+
+  camera_track_ended:
+    channel: device
+    b_s: 6.0
+    g_s: 3.0
+    f_s: 20.0
+
+  low_frame_rate:
+    channel: device
+    b_s: 4.0
+    g_s: 5.0
+    f_s: 30.0

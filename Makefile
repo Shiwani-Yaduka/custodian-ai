@@ -20,3 +20,4 @@ run:
 
 stop:
 	@python scripts/dev.py stop
+

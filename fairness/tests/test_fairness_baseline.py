@@ -6,3 +6,4 @@ def test_fairness_baseline_ready():
     import fairness
 
     assert fairness is not None
+

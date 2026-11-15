@@ -12,3 +12,4 @@ def test_laptop_light_principles():
     """Verify foundational constants and laptop-light sanity."""
     max_phase_a_ram_threshold_mb = 1024
     assert max_phase_a_ram_threshold_mb > 0
+
