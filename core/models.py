@@ -64,3 +64,9 @@ class RiskState(BaseModel):
     corroboration_multiplier: float = Field(default=1.0, ge=1.0)
     last_updated: float = Field(default=0.0)
     observation_history: List[ProcessedObservation] = Field(default_factory=list)
+
+    @property
+    def total_score(self) -> float:
+        """Alias for current_score."""
+        return self.current_score
+

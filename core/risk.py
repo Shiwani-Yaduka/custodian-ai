@@ -147,6 +147,32 @@ class RiskEngine:
         self.state_store.set_state(session_id, state)
         return state
 
+    def apply_observation(
+        self,
+        observation: Observation,
+        now: Optional[float] = None,
+    ) -> ProcessedObservation:
+        """Convenience method to ingest observation and return ProcessedObservation."""
+        processed, _ = self.process_observation(observation, now)
+        return processed
+
+    def get_state(
+        self,
+        session_id: str,
+        now: Optional[float] = None,
+    ) -> RiskState:
+        """Fetch or initialize risk state for a session, updating decay to now."""
+        current_time = self.get_current_time(now)
+        state = self.state_store.get_state(session_id)
+        if state is None:
+            state = self._initialize_session_state(session_id, current_time)
+            self.state_store.set_state(session_id, state)
+            return state
+
+        self._recalculate_state(state, current_time)
+        self.state_store.set_state(session_id, state)
+        return state
+
     def _initialize_session_state(self, session_id: str, created_at: float) -> RiskState:
         """Create a blank RiskState with all channels initialized to 0."""
         channels: Dict[str, ChannelState] = {}

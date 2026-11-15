@@ -11,6 +11,8 @@ Pure Python implementation of Section 6 of AGENTS.md:
 
 import math
 import random
+import time
+import uuid
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
@@ -303,7 +305,7 @@ class InvestigatorAgent:
     ) -> InvestigationCase:
         """Open a new case and initialize prior beliefs."""
         self._case_counter += 1
-        case_id = f"CASE-{now:.0f}-{self._case_counter:04d}"
+        case_id = f"CASE-{uuid.uuid4().hex[:6]}-{self._case_counter:04d}"
 
         # Get priors for this signal type, fallback to balanced prior
         priors = self.policy.signal_priors.get(
@@ -498,3 +500,103 @@ class InvestigatorAgent:
             engine.state_store.set_state(case.session_id, state)
 
         return processed, state
+
+    def get_case(self, case_id: str) -> Optional[InvestigationCase]:
+        """Fetch an active or resolved case by ID."""
+        if case_id in self.active_cases:
+            return self.active_cases[case_id]
+        for c in self.resolved_cases:
+            if c.case_id == case_id:
+                return c
+        return None
+
+    def get_session_cases(self, session_id: str) -> List[InvestigationCase]:
+        """Fetch all active and resolved cases for a session."""
+        cases = [c for c in self.active_cases.values() if c.session_id == session_id]
+        cases.extend([c for c in self.resolved_cases if c.session_id == session_id])
+        return sorted(cases, key=lambda c: c.opened_at)
+
+    def select_next_probe(self, case: InvestigationCase) -> Optional[ProbeConfig]:
+        """Select next probe definition for case."""
+        p_name = self.select_best_probe(case)
+        if p_name:
+            return self.policy.probes.get(p_name)
+        return None
+
+    def evaluate_observation(
+        self,
+        observation: Observation,
+        current_risk_state: Optional[RiskState] = None,
+        predicted_raw_weight: float = 10.0,
+        repetition_count: int = 1,
+        now: Optional[float] = None,
+    ) -> Optional[InvestigationCase]:
+        """Evaluate if an observation opens an investigation case and open it if needed."""
+        ts = now if now is not None else observation.timestamp
+        channel = observation.metadata.get("channel", "camera")
+
+        if current_risk_state is None:
+            from core.models import Tier
+
+            current_risk_state = RiskState(
+                session_id=observation.session_id,
+                current_score=0.0,
+                current_tier=Tier.CLEAR,
+                candidate_tier=Tier.CLEAR,
+                candidate_tier_since=ts,
+            )
+
+        should_open, reason = self.should_open_case(
+            observation=observation,
+            predicted_raw_weight=predicted_raw_weight,
+            current_risk_state=current_risk_state,
+            repetition_count=repetition_count,
+        )
+
+        if should_open:
+            return self.open_case(
+                observation=observation,
+                channel=channel,
+                held_raw_weight=predicted_raw_weight,
+                reason=reason,
+                now=ts,
+            )
+        return None
+
+    def run_investigation(
+        self, case_id: str, now: Optional[float] = None
+    ) -> CaseResolution:
+        """Run investigation to resolution."""
+        ts = now if now is not None else time.time()
+        return self.run_full_investigation(case_id, start_time=ts)
+
+    def apply_probe_outcome(
+        self,
+        case: InvestigationCase,
+        probe_name: str,
+        outcome: str,
+        timestamp: float,
+    ) -> Optional[CaseResolution]:
+        """Apply outcome of an interactive probe executed by the client."""
+        probe_def = self.policy.probes.get(probe_name)
+        if not probe_def:
+            return None
+
+        likelihood_map = probe_def.outcomes.get(outcome, {})
+        prior_belief = dict(case.current_belief)
+        posterior_belief = bayes_update(prior_belief, likelihood_map)
+
+        record = ProbeRecord(
+            probe_name=probe_name,
+            cost=probe_def.cost,
+            outcome=outcome,
+            prior_belief=prior_belief,
+            posterior_belief=posterior_belief,
+            executed_at=timestamp,
+        )
+
+        case.probe_history.append(record)
+        case.current_belief = dict(posterior_belief)
+
+        return self.check_and_close_case(case.case_id, timestamp)
+

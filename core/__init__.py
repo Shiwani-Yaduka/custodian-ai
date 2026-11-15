@@ -8,10 +8,13 @@ Pure Python implementation of:
 - Accusation-free warning text generators
 - Append-only evidence ledger models and repository
 - Student and faculty ledger readers
+- Sensory feature processing and calibration
+- In-process unified execution pipeline
 
 Zero HTTP or web dependencies.
 """
 
+from core.calibration import CalibrationBaseline, CalibrationDetector, FeatureBatch
 from core.gating import GatingDecision, check_tier_gate, evaluate_escalation_gate
 from core.investigator import (
     CaseResolution,
@@ -62,6 +65,7 @@ from core.models import (
     RiskState,
     Tier,
 )
+from core.pipeline import InProcessPipeline, PipelineResult, run_in_process_pipeline
 from core.policy import RiskPolicy, SignalDefinition, load_policy
 from core.risk import RiskEngine
 from core.safety import (
@@ -82,6 +86,8 @@ __version__ = "0.1.0"
 __all__ = [
     "ACCUSATORY_WORDS_BLACKLIST",
     "Base",
+    "CalibrationBaseline",
+    "CalibrationDetector",
     "CaseResolution",
     "ChannelState",
     "Exam",
@@ -90,9 +96,11 @@ __all__ = [
     "FacultyProbeDetail",
     "FacultyRiskPoint",
     "FacultyTimeline",
+    "FeatureBatch",
     "GatingDecision",
     "Hypothesis",
     "InMemoryStateStore",
+    "InProcessPipeline",
     "InvestigationCase",
     "InvestigatorAgent",
     "InvestigatorPolicy",
@@ -108,6 +116,7 @@ __all__ = [
     "LedgerWarning",
     "Observation",
     "PROHIBITED_ACTIONS",
+    "PipelineResult",
     "ProbeConfig",
     "ProbeRecord",
     "ProbeRunner",
@@ -138,5 +147,6 @@ __all__ = [
     "kl_divergence",
     "load_investigator_policy",
     "load_policy",
+    "run_in_process_pipeline",
     "verify_all_system_outcomes",
 ]

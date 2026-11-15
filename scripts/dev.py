@@ -9,16 +9,24 @@ Usage:
     python scripts/dev.py test
     python scripts/dev.py lint
     python scripts/dev.py fairness
+    python scripts/dev.py seed
     python scripts/dev.py run
     python scripts/dev.py stop
 """
 
+from __future__ import annotations
+
+import json
 import os
+import signal
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+PID_FILE = ROOT / ".services.pids"
 
 # Detect virtual environment python
 if os.name == "nt":
@@ -36,20 +44,6 @@ def get_python() -> str:
     if VENV_PYTHON.exists():
         return str(VENV_PYTHON)
     return sys.executable
-
-
-def get_pytest() -> str:
-    """Return venv pytest executable or fallback."""
-    if VENV_PYTEST.exists():
-        return str(VENV_PYTEST)
-    return f"{get_python()} -m pytest"
-
-
-def get_ruff() -> str:
-    """Return venv ruff executable or fallback."""
-    if VENV_RUFF.exists():
-        return str(VENV_RUFF)
-    return f"{get_python()} -m ruff"
 
 
 def run_command(cmd: str) -> int:
@@ -99,18 +93,151 @@ def cmd_fairness():
     return run_command(fairness_cmd)
 
 
+def cmd_seed():
+    """Seed demo accounts and Demo Exam."""
+    print("=== [seed] Seeding demo database ===")
+    py = get_python()
+    return run_command(f'"{py}" scripts/seed.py')
+
+
+def check_health(port: int) -> bool:
+    """Check if service on port is responding to /health."""
+    url = f"http://127.0.0.1:{port}/health"
+    try:
+        with urllib.request.urlopen(url, timeout=1.0) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def kill_pid(pid: int) -> None:
+    """Terminate process cleanly cross-platform."""
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except Exception:
+        pass
+
+
 def cmd_run():
-    """Start services in laptop-light mode."""
-    print("=== [run] Starting services (Phase A) ===")
-    print("Note: Service endpoints will be available as each phase builds out.")
-    print("Currently on Step A0: Core foundation ready.")
-    return 0
+    """Start all 5 services with plain uvicorn and wait for health checks."""
+    print("=== [run] Starting Custodian AI microservices (Laptop-Light Mode) ===")
+
+    # Stop any previously running services first
+    cmd_stop(silent=True)
+
+    # Auto-seed database if needed
+    cmd_seed()
+
+    py = get_python()
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ROOT)
+
+    services = [
+        ("capture-detect", "services.capture_detect.main:app", 8001),
+        ("risk-engine", "services.risk_engine.main:app", 8002),
+        ("investigator", "services.investigator.main:app", 8003),
+        ("warn-escalate", "services.warn_escalate.main:app", 8004),
+        ("review-report", "services.review_report.main:app", 8005),
+    ]
+
+    pids = {}
+    processes = []
+
+    creationflags = 0
+    start_new_session = False
+    if os.name == "nt":
+        detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | detached
+    else:
+        start_new_session = True
+
+    print("\nSpawning services...")
+    for name, module, port in services:
+        cmd = [
+            py,
+            "-m",
+            "uvicorn",
+            module,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--log-level",
+            "warning",
+        ]
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(ROOT),
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
+            start_new_session=start_new_session,
+        )
+        pids[name] = proc.pid
+        processes.append((name, port, proc))
+        print(f"  • {name:<15} [PID {proc.pid}] on port {port}")
+
+    # Save PIDs
+    with open(PID_FILE, "w") as f:
+        json.dump(pids, f, indent=2)
+
+    # Wait for /health on all ports
+    print("\nWaiting for /health checks...")
+    start_time = time.time()
+    max_wait = 15.0  # seconds
+
+    all_healthy = False
+    while time.time() - start_time < max_wait:
+        healthy_count = sum(1 for _, port, _ in processes if check_health(port))
+        if healthy_count == len(services):
+            all_healthy = True
+            break
+        time.sleep(0.5)
+
+    if all_healthy:
+        print("\nAll 5 services are healthy and running:")
+        for name, port, _ in processes:
+            print(f"  ✓ {name:<15} -> http://127.0.0.1:{port} (health: http://127.0.0.1:{port}/health)")
+        print("\nTo stop all services cleanly, run: python scripts/dev.py stop")
+        return 0
+    else:
+        print("\nWarning: Some services did not report healthy within 15 seconds.")
+        for name, port, _ in processes:
+            status = "HEALTHY" if check_health(port) else "FAILED / PENDING"
+            print(f"  - {name:<15} (port {port}): {status}")
+        return 1
 
 
-def cmd_stop():
-    """Stop running dev services."""
-    print("=== [stop] Stopping development services ===")
-    print("All processes stopped.")
+def cmd_stop(silent: bool = False):
+    """Stop all running dev services."""
+    if not silent:
+        print("=== [stop] Stopping development services ===")
+
+    if PID_FILE.exists():
+        try:
+            with open(PID_FILE, "r") as f:
+                pids = json.load(f)
+            for name, pid in pids.items():
+                if not silent:
+                    print(f"Stopping {name} [PID {pid}]...")
+                kill_pid(pid)
+            PID_FILE.unlink(missing_ok=True)
+            if not silent:
+                print("All services stopped.")
+        except Exception as e:
+            if not silent:
+                print(f"Error stopping services: {e}")
+    else:
+        if not silent:
+            print("No active service PID file found.")
     return 0
 
 
@@ -129,6 +256,7 @@ def main():
         "test": cmd_test,
         "lint": cmd_lint,
         "fairness": cmd_fairness,
+        "seed": cmd_seed,
         "run": cmd_run,
         "stop": cmd_stop,
         "help": print_help,
@@ -145,4 +273,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
