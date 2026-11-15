@@ -112,7 +112,7 @@ class CalibrationDetector:
         base_confidence = 1.0
         if batch.ambient_light < 0.30:
             base_confidence *= 0.65  # Poor lighting lowers confidence
-        if batch.fps < 12.0:
+        if batch.fps < 2.5:
             base_confidence *= 0.70  # Low frame rate introduces jitter uncertainty
 
         def track_duration(signal: str, is_active: bool) -> float:
@@ -249,9 +249,9 @@ class CalibrationDetector:
                 )
             )
 
-        # Check: Low Frame Rate
-        dur_fps = track_duration("low_frame_rate", batch.fps < 10.0)
-        if batch.fps < 10.0:
+        # Check: Low Frame Rate (threshold tuned for laptop-light 5 fps proctoring)
+        dur_fps = track_duration("low_frame_rate", batch.fps < 2.5)
+        if batch.fps < 2.5:
             observations.append(
                 Observation(
                     session_id=batch.session_id,

@@ -165,24 +165,38 @@ def build_student_record(session_id: str, repo: LedgerRepository) -> StudentReco
     # Sort core decision events chronologically
     events.sort(key=lambda e: e.timestamp)
 
-    # Extract sensory observations from ledger (for granular evidence transparency)
+    # Extract sensory observations from ledger (coalescing continuous episodes)
     obs_events: List[StudentTimelineEvent] = []
     try:
         raw_obs = repo.get_observations(session_id)
-        # Capture significant observations (duration >= 2.0s)
+        # Group adjacent 1-second samples of the same signal into coherent episodes
+        episodes: List[List[Any]] = []
         for obs in raw_obs:
-            if obs.duration >= 2.0:
-                sig_name = obs.signal.replace("_", " ").title()
+            if not episodes:
+                episodes.append([obs])
+            else:
+                last_ep = episodes[-1]
+                last_obs = last_ep[-1]
+                # If same signal and occurred within 2.5s of prior sample, group into same episode
+                if obs.signal == last_obs.signal and (obs.timestamp - last_obs.timestamp) <= 2.5:
+                    last_ep.append(obs)
+                else:
+                    episodes.append([obs])
+
+        for ep in episodes:
+            peak_obs = max(ep, key=lambda o: o.duration)
+            if peak_obs.duration >= 2.0:
+                sig_name = peak_obs.signal.replace("_", " ").title()
                 obs_events.append(
                     StudentTimelineEvent(
-                        timestamp=obs.timestamp,
+                        timestamp=ep[0].timestamp,
                         event_type="observation",
                         title=f"Observation: {sig_name}",
                         description=(
-                            f"Sensory detector noted {sig_name} for {obs.duration:.1f}s "
-                            f"(confidence: {int(obs.confidence * 100)}%)."
+                            f"Sensory detector noted {sig_name} for {peak_obs.duration:.1f}s "
+                            f"(confidence: {int(peak_obs.confidence * 100)}%)."
                         ),
-                        severity="info" if obs.duration < 8.0 else "warning",
+                        severity="info" if peak_obs.duration < 8.0 else "warning",
                     )
                 )
     except Exception:
