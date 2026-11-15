@@ -1,0 +1,168 @@
+# Custodian AI — Investigation Agent Policy Configuration
+# Reference: Section 6 of AGENTS.md
+# Models hypothesis beliefs H = {ordinary, technical, deliberate}
+# Probes library with costs, likelihood tables P(outcome | hypothesis)
+
+version: "1.0"
+
+# Case Opening Thresholds
+confidence_threshold: 0.60    # Open case if detector confidence < 0.60
+closing_threshold: 0.70       # Close case when any hypothesis posterior >= 0.70
+max_probes: 3                 # Close case as INCONCLUSIVE after 3 probes if unresolved
+
+# Resolution Multipliers Applied to Held Weight Upon Closing
+resolution_multipliers:
+  deliberate: 1.00    # Full penalty applied
+  inconclusive: 0.40  # Discounted penalty (student given benefit of doubt)
+  ordinary: 0.15      # Nominal natural movement penalty (decays rapidly)
+  technical: 0.00     # Zero penalty; channel is discounted until fault clears
+
+# Prior Probability Distributions P(H) per Signal Type
+# Must sum to 1.0. All values < 0.70 so probes can actively evaluate evidence.
+signal_priors:
+  network_drop:
+    technical: 0.60
+    ordinary: 0.25
+    deliberate: 0.15
+  camera_track_ended:
+    technical: 0.60
+    ordinary: 0.25
+    deliberate: 0.15
+  low_frame_rate:
+    technical: 0.60
+    ordinary: 0.25
+    deliberate: 0.15
+  face_absent:
+    ordinary: 0.50
+    technical: 0.20
+    deliberate: 0.30
+  gaze_off_screen:
+    ordinary: 0.55
+    technical: 0.15
+    deliberate: 0.30
+  head_turn:
+    ordinary: 0.55
+    technical: 0.15
+    deliberate: 0.30
+  speech_detected:
+    ordinary: 0.50
+    deliberate: 0.35
+    technical: 0.15
+  window_blur:
+    ordinary: 0.50
+    technical: 0.20
+    deliberate: 0.30
+  tab_hidden:
+    deliberate: 0.55
+    ordinary: 0.30
+    technical: 0.15
+  multiple_faces:
+    deliberate: 0.55
+    ordinary: 0.30
+    technical: 0.15
+
+# Probe Library (6 probes ordered from quietest to most intrusive)
+# Formula for expected utility: E[IG] / (1 + cost)
+# Where E[IG] = sum_o P(o) * KL(P(H|o) || P(H))
+probes:
+  device_telemetry_check:
+    cost: 0.0
+    description: "Check OS device logs and USB driver interrupt health"
+    outcomes:
+      hardware_normal:
+        technical: 0.10
+        ordinary: 0.80
+        deliberate: 0.80
+      hardware_fault:
+        technical: 0.80
+        ordinary: 0.05
+        deliberate: 0.05
+      intermittent_telemetry:
+        technical: 0.10
+        ordinary: 0.15
+        deliberate: 0.15
+
+  network_heartbeat_check:
+    cost: 0.0
+    description: "Measure ping latency, packet jitter, and TCP retransmit drops"
+    outcomes:
+      network_stable:
+        technical: 0.10
+        ordinary: 0.80
+        deliberate: 0.80
+      packet_loss_spike:
+        technical: 0.80
+        ordinary: 0.05
+        deliberate: 0.05
+      minor_jitter:
+        technical: 0.10
+        ordinary: 0.15
+        deliberate: 0.15
+
+  secondary_detector_cross_check:
+    cost: 0.1
+    description: "Run secondary lightweight edge detector over cached frame"
+    outcomes:
+      disagrees_normal:
+        technical: 0.70
+        ordinary: 0.60
+        deliberate: 0.10
+      confirms_anomaly:
+        technical: 0.10
+        ordinary: 0.20
+        deliberate: 0.80
+      inconclusive_blur:
+        technical: 0.20
+        ordinary: 0.20
+        deliberate: 0.10
+
+  high_res_frame_burst:
+    cost: 0.3
+    description: "Capture brief 3-frame high-resolution burst for spatial inspection"
+    outcomes:
+      benign_ambient_object:
+        technical: 0.10
+        ordinary: 0.70
+        deliberate: 0.15
+      clear_secondary_actor:
+        technical: 0.05
+        ordinary: 0.10
+        deliberate: 0.75
+      sensor_blur_or_dark:
+        technical: 0.85
+        ordinary: 0.20
+        deliberate: 0.10
+
+  soft_reminder:
+    cost: 0.7
+    description: "Gentle on-screen banner: 'Please keep your face visible in camera'"
+    outcomes:
+      immediate_correction:
+        technical: 0.10
+        ordinary: 0.80
+        deliberate: 0.15
+      resumes_or_ignores:
+        technical: 0.85
+        ordinary: 0.15
+        deliberate: 0.80
+      partially_adjusts:
+        technical: 0.05
+        ordinary: 0.05
+        deliberate: 0.05
+
+  explanation_prompt:
+    cost: 1.0
+    description: "Interactive dialog prompting candidate: 'Did you experience a technical difficulty?'"
+    outcomes:
+      credible_environmental_reason:
+        technical: 0.80
+        ordinary: 0.80
+        deliberate: 0.05
+      evasive_or_unresponsive:
+        technical: 0.10
+        ordinary: 0.10
+        deliberate: 0.90
+      ambiguous_response:
+        technical: 0.10
+        ordinary: 0.10
+        deliberate: 0.05
