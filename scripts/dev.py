@@ -46,12 +46,12 @@ def get_python() -> str:
     return sys.executable
 
 
-def run_command(cmd: str) -> int:
-    """Execute command in project root."""
+def run_command(cmd: str, cwd: str | None = None) -> int:
+    """Execute command in project root or specified directory."""
     print(f"\n[dev.py] -> {cmd}")
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT)
-    res = subprocess.run(cmd, shell=True, cwd=str(ROOT), env=env)
+    res = subprocess.run(cmd, shell=True, cwd=cwd or str(ROOT), env=env)
     return res.returncode
 
 
@@ -70,11 +70,22 @@ def cmd_setup():
 
 
 def cmd_test():
-    """Run pytest suite."""
-    print("=== [test] Running test suite ===")
+    """Run backend pytest suite and frontend vitest suite."""
+    print("=== [test] Running backend test suite ===")
     py = get_python()
     test_cmd = f'"{py}" -m pytest'
-    return run_command(test_cmd)
+    code = run_command(test_cmd)
+    if code != 0:
+        return code
+
+    web_pkg = ROOT / "web" / "package.json"
+    if web_pkg.exists():
+        print("\n=== [test] Running frontend vitest suite ===")
+        v_name = "vitest.cmd" if os.name == "nt" else "vitest"
+        vitest_bin = ROOT / "web" / "node_modules" / ".bin" / v_name
+        if vitest_bin.exists():
+            return run_command(f'"{vitest_bin}" run', cwd=str(ROOT / "web"))
+    return code
 
 
 def cmd_lint():
@@ -101,11 +112,11 @@ def cmd_seed():
 
 
 def check_health(port: int) -> bool:
-    """Check if service on port is responding to /health."""
-    url = f"http://127.0.0.1:{port}/health"
+    """Check if service or web frontend on port is responding."""
+    url = f"http://127.0.0.1:{port}/" if port == 5173 else f"http://127.0.0.1:{port}/health"
     try:
         with urllib.request.urlopen(url, timeout=1.0) as resp:
-            return resp.status == 200
+            return resp.status in (200, 304)
     except Exception:
         return False
 
@@ -185,28 +196,56 @@ def cmd_run():
         processes.append((name, port, proc))
         print(f"  • {name:<15} [PID {proc.pid}] on port {port}")
 
+    # Launch Vite Web Frontend if present
+    vite_bin = ROOT / "web" / "node_modules" / ".bin" / ("vite.cmd" if os.name == "nt" else "vite")
+    if vite_bin.exists():
+        vite_cmd = f'"{vite_bin}" --port 5173 --host 127.0.0.1'
+        vite_proc = subprocess.Popen(
+            vite_cmd,
+            shell=True,
+            cwd=str(ROOT / "web"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
+            start_new_session=start_new_session,
+        )
+        pids["web-frontend"] = vite_proc.pid
+        processes.append(("web-frontend", 5173, vite_proc))
+        print(f"  • {'web-frontend':<15} [PID {vite_proc.pid}] on port 5173")
+
     # Save PIDs
     with open(PID_FILE, "w") as f:
         json.dump(pids, f, indent=2)
 
-    # Wait for /health on all ports
-    print("\nWaiting for /health checks...")
+    # Wait for health/readiness on all ports
+    print("\nWaiting for health/readiness checks...")
     start_time = time.time()
     max_wait = 15.0  # seconds
 
     all_healthy = False
     while time.time() - start_time < max_wait:
         healthy_count = sum(1 for _, port, _ in processes if check_health(port))
-        if healthy_count == len(services):
+        if healthy_count == len(processes):
             all_healthy = True
             break
         time.sleep(0.5)
 
     if all_healthy:
-        print("\nAll 5 services are healthy and running:")
+        print("\nAll services and web frontend are healthy and running:")
         for name, port, _ in processes:
-            print(f"  ✓ {name:<15} -> http://127.0.0.1:{port} (health: http://127.0.0.1:{port}/health)")
-        print("\nTo stop all services cleanly, run: python scripts/dev.py stop")
+            health_path = "/" if port == 5173 else "/health"
+            print(f"  ✓ {name:<15} -> http://127.0.0.1:{port} (health: http://127.0.0.1:{port}{health_path})")
+        print("\nReady! Open http://127.0.0.1:5173 in your browser.")
+        print("To stop all services cleanly, run: python scripts/dev.py stop (or press Ctrl+C)")
+
+        if "--detach" in sys.argv:
+            return 0
+
+        try:
+            while True:
+                time.sleep(1.0)
+        except (KeyboardInterrupt, SystemExit):
+            cmd_stop()
         return 0
     else:
         print("\nWarning: Some services did not report healthy within 15 seconds.")
