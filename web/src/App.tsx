@@ -105,15 +105,66 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-container" style={{ position: 'relative' }}>
-      {/* Top Demo Trigger Button */}
+      {/* Top Demo & Quick Navigation Triggers */}
       <div
         style={{
           position: 'fixed',
           top: 12,
           right: 12,
           zIndex: 900,
+          display: 'flex',
+          gap: 8,
+          alignItems: 'center',
         }}
       >
+        {session && session.role === 'student' && (
+          <button
+            onClick={() => {
+              api.login('faculty1', 'faculty1pass').then((facSession) => {
+                setSession(facSession);
+                setCurrentScreen('faculty');
+              });
+            }}
+            style={{
+              background: '#3730a3',
+              color: '#ffffff',
+              border: '1px solid #4338ca',
+              padding: '6px 12px',
+              borderRadius: 6,
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+            }}
+          >
+            👩‍🏫 Switch to Faculty Portal
+          </button>
+        )}
+
+        {session && session.role === 'faculty' && (
+          <button
+            onClick={() => {
+              api.login('student1', 'student1pass').then((studSession) => {
+                setSession(studSession);
+                setCurrentScreen('exam');
+              });
+            }}
+            style={{
+              background: '#2563eb',
+              color: '#ffffff',
+              border: '1px solid #1d4ed8',
+              padding: '6px 12px',
+              borderRadius: 6,
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+            }}
+          >
+            🎓 Switch to Student Exam
+          </button>
+        )}
+
         <button
           onClick={() => setIsDemoOpen(true)}
           style={{
