@@ -143,12 +143,10 @@ def cmd_run():
     # Stop any previously running services first
     cmd_stop(silent=True)
 
-    # Auto-seed database if needed
-    cmd_seed()
-
     py = get_python()
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT)
+    env["PYTHONUNBUFFERED"] = "1"
 
     services = [
         ("capture-detect", "services.capture_detect.main:app", 8001),
@@ -236,7 +234,8 @@ def cmd_run():
             health_path = "/" if port == 5173 else "/health"
             print(f"  ✓ {name:<15} -> http://127.0.0.1:{port} (health: http://127.0.0.1:{port}{health_path})")
         print("\nReady! Open http://127.0.0.1:5173 in your browser.")
-        print("To stop all services cleanly, run: python scripts/dev.py stop (or press Ctrl+C)")
+        print("To stop all services cleanly, run: python scripts/dev.py stop (or press Ctrl+C)", flush=True)
+        sys.stdout.flush()
 
         if "--detach" in sys.argv:
             return 0

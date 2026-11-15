@@ -8,7 +8,7 @@ interface LoginScreenProps {
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('student1');
-  const [password, setPassword] = useState('student123');
+  const [password, setPassword] = useState('student1pass');
   const [isPractice, setIsPractice] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,17 +141,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               type="button"
               className="btn btn-secondary"
               style={{ fontSize: '0.85rem', padding: '6px 12px' }}
-              onClick={() => fillAccount('student1', 'student123')}
+              onClick={() => fillAccount('student1', 'student1pass')}
             >
-              student1 (Student)
+              student1 (pass: student1pass)
             </button>
             <button
               type="button"
               className="btn btn-secondary"
               style={{ fontSize: '0.85rem', padding: '6px 12px' }}
-              onClick={() => fillAccount('student2', 'student123')}
+              onClick={() => fillAccount('student2', 'student2pass')}
             >
-              student2 (Student)
+              student2 (pass: student2pass)
             </button>
           </div>
         </div>
