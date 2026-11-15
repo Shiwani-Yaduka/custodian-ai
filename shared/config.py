@@ -7,7 +7,7 @@ using Pydantic Settings.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -64,6 +64,21 @@ class Settings(BaseSettings):
     tier_hysteresis_seconds: float = Field(default=6.0, alias="TIER_HYSTERESIS_SECONDS")
     mass_flag_window_seconds: float = Field(default=60.0, alias="MASS_FLAG_WINDOW_SECONDS")
     mass_flag_session_ratio: float = Field(default=0.30, alias="MASS_FLAG_SESSION_RATIO")
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """Enforce Section 10: No insecure or hardcoded default secrets in production."""
+        if self.app_env == "production":
+            if (
+                not self.jwt_secret
+                or "dev-insecure" in self.jwt_secret
+                or len(self.jwt_secret) < 16
+            ):
+                raise ValueError(
+                    "Security Violation: In production mode, JWT_SECRET must be set via "
+                    "environment variable with a secure secret string (at least 16 chars)."
+                )
+        return self
 
 
 @lru_cache()

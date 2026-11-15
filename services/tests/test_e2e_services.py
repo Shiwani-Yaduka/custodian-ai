@@ -24,6 +24,9 @@ from services.investigator.main import app as app_investigator
 from services.review_report.main import app as app_review
 from services.risk_engine.main import app as app_risk
 from services.warn_escalate.main import app as app_warn
+from shared.config import get_settings
+
+settings = get_settings()
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -92,7 +95,10 @@ def test_student_flow_with_warning_and_explanation(
     # 1. Student Login
     login_resp = client_review.post(
         "/auth/login",
-        json={"username": "student1", "password": "student1pass"},
+        json={
+            "username": settings.demo_student1_username,
+            "password": settings.demo_student1_password,
+        },
     )
     assert login_resp.status_code == 200
     token = login_resp.json()["access_token"]
@@ -230,7 +236,10 @@ def test_faculty_portal_and_held_session_workflow(
     # Start session
     student_login = client_review.post(
         "/auth/login",
-        json={"username": "student1", "password": "student1pass"},
+        json={
+            "username": settings.demo_student1_username,
+            "password": settings.demo_student1_password,
+        },
     )
     st_token = student_login.json()["access_token"]
     client_review.post(
@@ -319,7 +328,10 @@ def test_faculty_portal_and_held_session_workflow(
     # Faculty Login (:8005)
     fac_login = client_review.post(
         "/auth/login",
-        json={"username": "faculty1", "password": "faculty1pass"},
+        json={
+            "username": settings.demo_faculty1_username,
+            "password": settings.demo_faculty1_password,
+        },
     )
     assert fac_login.status_code == 200
     fac_token = fac_login.json()["access_token"]
@@ -371,7 +383,10 @@ def test_calm_student_scenario(client_review, client_capture, client_risk):
     # Start session for student2
     s_login = client_review.post(
         "/auth/login",
-        json={"username": "student2", "password": "student2pass"},
+        json={
+            "username": settings.demo_student2_username,
+            "password": settings.demo_student2_password,
+        },
     )
     token = s_login.json()["access_token"]
     client_review.post(
