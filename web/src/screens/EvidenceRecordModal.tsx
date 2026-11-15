@@ -36,9 +36,39 @@ export const EvidenceRecordModal: React.FC<EvidenceRecordModalProps> = ({
 
     api
       .getStudentRecord(sessionId)
-      .then((data) => {
-        setTimeline(data.timeline || []);
-        setSummary(data.plain_text_summary || '');
+      .then((data: any) => {
+        const rawEvents = [...(data.events || []), ...(data.observations || [])];
+        if (data.timeline && Array.isArray(data.timeline) && rawEvents.length === 0) {
+          rawEvents.push(...data.timeline);
+        }
+
+        rawEvents.sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
+
+        const formatted = rawEvents.map((ev: any) => {
+          const tsStr =
+            typeof ev.timestamp === 'number'
+              ? new Date(ev.timestamp * 1000).toLocaleTimeString()
+              : String(ev.timestamp || '');
+          let title = ev.title;
+          if (!title) {
+            if (ev.event_type === 'notice') title = 'Official Notice';
+            else if (ev.event_type === 'explanation') title = 'Student Explanation';
+            else if (ev.event_type === 'status_change') title = 'Session Status';
+            else if (ev.event_type === 'observation') title = 'Sensory Observation';
+            else title = 'Ledger Event';
+          }
+          return {
+            title,
+            timestamp: tsStr,
+            elapsed_seconds: 0,
+            type: ev.event_type || 'info',
+            description: ev.description,
+            severity: ev.severity || (ev.event_type === 'notice' ? 'warning' : 'info'),
+          } as StudentTimelineItem;
+        });
+
+        setTimeline(formatted);
+        setSummary(data.summary || data.plain_text_summary || 'No notices recorded.');
       })
       .catch((err) => {
         console.error('Failed to load student record:', err);

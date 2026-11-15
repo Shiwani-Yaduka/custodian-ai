@@ -54,6 +54,11 @@ export const App: React.FC = () => {
 
   const handleCalibrationComplete = (base: CalibrationBaseline) => {
     setBaseline(base);
+    if (!isPractice && sessionId) {
+      api.sendCalibration(sessionId, base).catch((err) => {
+        console.warn('Failed to send calibration to backend:', err);
+      });
+    }
     setCurrentScreen('exam');
   };
 

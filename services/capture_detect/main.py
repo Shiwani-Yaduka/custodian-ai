@@ -9,11 +9,13 @@ from __future__ import annotations
 import time
 from typing import List
 
+import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from core.calibration import CalibrationDetector, FeatureBatch
+from core.ledger import SQLAlchemyLedgerRepository
 from core.models import Observation
 from shared.config import get_settings
 from shared.logging import setup_json_logging
@@ -44,6 +46,9 @@ app.add_middleware(
 )
 
 detector = CalibrationDetector()
+repo = SQLAlchemyLedgerRepository(database_url=settings.database_url)
+repo.init_db()
+http_client = httpx.Client(timeout=0.6)
 
 
 class ProcessFeaturesResponse(BaseModel):
@@ -54,6 +59,21 @@ class ProcessFeaturesResponse(BaseModel):
     is_calibrating: bool = Field(..., description="True if within initial 30s calibration window")
     calibration_progress: float = Field(..., description="Progress from 0.0 to 1.0")
     observations: List[Observation] = Field(default_factory=list)
+
+
+class CalibrationPayload(BaseModel):
+    """Client-computed 30-second baseline statistics."""
+
+    session_id: str
+    mean_gaze_offset: float = 0.15
+    std_gaze_offset: float = 0.05
+    mean_head_yaw: float = 0.0
+    std_head_yaw: float = 0.08
+    mean_head_pitch: float = 0.0
+    std_head_pitch: float = 0.08
+    mean_face_size: float = 0.35
+    std_face_size: float = 0.05
+    sample_count: int = 150
 
 
 @app.middleware("http")
@@ -80,11 +100,84 @@ def get_metrics():
     return Response(content=metrics.to_prometheus_text(), media_type="text/plain")
 
 
+@app.post("/calibration")
+def register_calibration(payload: CalibrationPayload):
+    """Accept client-computed 30-second baseline and activate operational detection immediately."""
+    baseline = detector.get_or_create_baseline(payload.session_id, time.time())
+    baseline.is_calibrated = True
+    baseline.start_time = time.time() - 35.0  # Window elapsed
+    baseline.gaze_threshold = max(0.25, payload.mean_gaze_offset + 0.20)
+    baseline.yaw_threshold = max(18.0, payload.mean_head_yaw + 15.0)
+    baseline.pitch_threshold = max(15.0, payload.mean_head_pitch + 12.0)
+    logger.info(f"Registered personal calibration baseline for session: {payload.session_id}")
+    return {"status": "calibrated", "session_id": payload.session_id}
+
+
 @app.post("/features", response_model=ProcessFeaturesResponse)
 def ingest_features(batch: FeatureBatch):
-    """Process a sensory feature batch and return any detected observations."""
+    """Process a sensory feature batch, record observations to ledger, and forward."""
     is_calibrating, progress, observations = detector.process_features(batch)
     metrics.inc("observations_generated_total", amount=float(len(observations)))
+
+    if observations:
+        # 1. Append observations to append-only ledger
+        for obs in observations:
+            try:
+                repo.append_observation(
+                    session_id=obs.session_id,
+                    signal=obs.signal,
+                    confidence=obs.confidence,
+                    duration=obs.duration,
+                    timestamp=obs.timestamp,
+                )
+            except Exception as e:
+                logger.debug(f"Failed to record observation to ledger: {e}")
+
+        # 2. Forward to investigator and risk-engine
+        for obs in observations:
+            case_opened = False
+            try:
+                inv_res = http_client.post(
+                    f"http://127.0.0.1:{settings.investigator_port}/evaluate",
+                    json=obs.model_dump(),
+                )
+                if inv_res.status_code == 200 and inv_res.json().get("case_opened"):
+                    case_opened = True
+            except Exception as e:
+                logger.debug(f"Investigator evaluate call skipped: {e}")
+
+            if not case_opened:
+                try:
+                    http_client.post(
+                        f"http://127.0.0.1:{settings.risk_engine_port}/observe",
+                        json=obs.model_dump(),
+                    )
+                except Exception as e:
+                    logger.debug(f"Risk engine observe call skipped: {e}")
+
+        # 3. Check updated score and evaluate tier gating
+        try:
+            state_res = http_client.get(
+                f"http://127.0.0.1:{settings.risk_engine_port}/state/{batch.session_id}"
+            )
+            if state_res.status_code == 200:
+                risk_state = state_res.json()
+                http_client.post(
+                    f"http://127.0.0.1:{settings.warn_escalate_port}/evaluate",
+                    json={
+                        "session_id": batch.session_id,
+                        "score": risk_state["total_score"],
+                        "current_tier": risk_state["current_tier"],
+                        "candidate_tier": risk_state["candidate_tier"],
+                        "contributing_channels": risk_state["contributing_channels"],
+                        "recent_signal": observations[-1].signal,
+                        "recent_duration": observations[-1].duration,
+                        "timestamp": batch.timestamp,
+                    },
+                )
+        except Exception as e:
+            logger.debug(f"Tier gating evaluate call skipped: {e}")
+
     return ProcessFeaturesResponse(
         session_id=batch.session_id,
         timestamp=batch.timestamp,

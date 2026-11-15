@@ -120,6 +120,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   const [currentFps, setCurrentFps] = useState(5.0);
   const [audioLevel, setAudioLevel] = useState(0.0);
   const [facePresent, setFacePresent] = useState(true);
+  const [headYaw, setHeadYaw] = useState(0.0);
   const [showEvidence, setShowEvidence] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -179,6 +180,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
       const sample = detector.processVideoFrame(videoRef.current, performance.now());
       latestSampleRef.current = sample;
       setFacePresent(sample.face_present);
+      setHeadYaw(sample.head_yaw);
       batcher.updateFaceSample(sample, stream ? stream.active : true);
     }, 200);
 
@@ -303,11 +305,24 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
           <div className="status-badge">
             <span
               className={`status-dot ${
-                warningTier === 'HELD' ? 'alert' : warningTier === 'WARNED' || warningTier === 'ELEVATED' ? 'warning' : ''
+                warningTier === 'HELD'
+                  ? 'alert'
+                  : warningTier === 'WARNED' || warningTier === 'ELEVATED'
+                  ? 'warning'
+                  : !facePresent
+                  ? 'alert'
+                  : Math.abs(headYaw) > 20
+                  ? 'warning'
+                  : ''
               }`}
             />
-            <span>
-              {facePresent ? 'Monitoring Active' : 'Face Missing'} · Audio {audioLevel > 0.05 ? 'Active' : 'Quiet'} · {currentFps} fps
+            <span style={{ fontWeight: 500 }}>
+              {!facePresent
+                ? '🔴 Face Missing'
+                : Math.abs(headYaw) > 20
+                ? `🟡 Head Turned (${headYaw > 0 ? '+' : ''}${Math.round(headYaw)}°)`
+                : '🟢 Monitoring Active'}
+              {' · '}Audio {audioLevel > 0.05 ? 'Active' : 'Quiet'} · {currentFps} fps
             </span>
           </div>
 
@@ -449,6 +464,34 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
                   autoPlay
                 />
                 <div className="face-guide-overlay" style={{ width: 110, height: 140 }} />
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-around',
+                  fontSize: '0.8rem',
+                  color: '#64748b',
+                  background: '#f8fafc',
+                  padding: '6px 8px',
+                  borderRadius: 4,
+                  marginBottom: 8,
+                }}
+              >
+                <span>
+                  Yaw:{' '}
+                  <strong style={{ color: Math.abs(headYaw) > 20 ? '#d97706' : '#0f172a' }}>
+                    {headYaw > 0 ? '+' : ''}{Math.round(headYaw)}°
+                  </strong>
+                </span>
+                <span>
+                  Face:{' '}
+                  <strong style={{ color: facePresent ? '#16a34a' : '#dc2626' }}>
+                    {facePresent ? 'Present' : 'Absent'}
+                  </strong>
+                </span>
+                <span>
+                  Audio: <strong>{Math.round(audioLevel * 100)}%</strong>
+                </span>
               </div>
               <div style={{ fontSize: '0.78rem', color: '#64748b', textAlign: 'center' }}>
                 🔒 Frames processed locally via WASM · Never recorded

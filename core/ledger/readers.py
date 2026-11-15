@@ -21,8 +21,10 @@ class StudentTimelineEvent(BaseModel):
     """A single human-readable event on the student's audit record."""
 
     timestamp: float
-    event_type: str  # "notice", "explanation", "status_change", "info"
+    event_type: str  # "notice", "explanation", "status_change", "observation", "info"
     description: str
+    title: Optional[str] = None
+    severity: Optional[str] = "info"
 
 
 class StudentRecord(BaseModel):
@@ -32,7 +34,9 @@ class StudentRecord(BaseModel):
     status: str
     start_time: float
     events: List[StudentTimelineEvent] = Field(default_factory=list)
+    observations: List[StudentTimelineEvent] = Field(default_factory=list)
     summary: str
+    plain_text_summary: str = ""
     disclaimer: str = (
         "Custodian AI records evidence under uncertainty and never takes automated disciplinary "
         "or grading action. You have the right to inspect this record and submit explanations."
@@ -123,7 +127,9 @@ def build_student_record(session_id: str, repo: LedgerRepository) -> StudentReco
             StudentTimelineEvent(
                 timestamp=w.timestamp,
                 event_type="notice",
+                title=f"Official Notice #{w.warning_number}",
                 description=w.message,
+                severity="warning" if w.warning_number == 1 else "alert",
             )
         )
 
@@ -134,7 +140,9 @@ def build_student_record(session_id: str, repo: LedgerRepository) -> StudentReco
             StudentTimelineEvent(
                 timestamp=exp.timestamp,
                 event_type="explanation",
+                title="Student Explanation Recorded",
                 description=f'You submitted explanation: "{exp.explanation_text}"',
+                severity="info",
             )
         )
 
@@ -145,15 +153,42 @@ def build_student_record(session_id: str, repo: LedgerRepository) -> StudentReco
             StudentTimelineEvent(
                 timestamp=h.paused_at,
                 event_type="status_change",
+                title="Human Review Referral",
                 description=(
                     "Exam paused and forwarded to faculty for human review. "
                     "No automatic penalty has been applied."
                 ),
+                severity="alert",
             )
         )
 
-    # Sort events chronologically
+    # Sort core decision events chronologically
     events.sort(key=lambda e: e.timestamp)
+
+    # Extract sensory observations from ledger (for granular evidence transparency)
+    obs_events: List[StudentTimelineEvent] = []
+    try:
+        raw_obs = repo.get_observations(session_id)
+        # Capture significant observations (duration >= 2.0s)
+        for obs in raw_obs:
+            if obs.duration >= 2.0:
+                sig_name = obs.signal.replace("_", " ").title()
+                obs_events.append(
+                    StudentTimelineEvent(
+                        timestamp=obs.timestamp,
+                        event_type="observation",
+                        title=f"Observation: {sig_name}",
+                        description=(
+                            f"Sensory detector noted {sig_name} for {obs.duration:.1f}s "
+                            f"(confidence: {int(obs.confidence * 100)}%)."
+                        ),
+                        severity="info" if obs.duration < 8.0 else "warning",
+                    )
+                )
+    except Exception:
+        pass
+
+    obs_events.sort(key=lambda e: e.timestamp)
 
     # Generate constructive plain-language summary
     if holds:
@@ -171,6 +206,16 @@ def build_student_record(session_id: str, repo: LedgerRepository) -> StudentReco
             "One notice was issued during your exam. You were able to continue without "
             "interruption."
         )
+    elif len(explanations) > 0:
+        summary = (
+            f"{len(explanations)} student explanation(s) recorded in your verified ledger. "
+            "No disciplinary notices or interventions were issued."
+        )
+    elif len(obs_events) > 0:
+        summary = (
+            f"{len(obs_events)} sensory observation(s) noted under uncertainty. "
+            "Risk score remained low (CLEAR). No disciplinary notices were issued."
+        )
     else:
         summary = "No notices or interventions occurred during your exam session."
 
@@ -179,7 +224,9 @@ def build_student_record(session_id: str, repo: LedgerRepository) -> StudentReco
         status=status,
         start_time=start_time,
         events=events,
+        observations=obs_events,
         summary=summary,
+        plain_text_summary=summary,
     )
 
 

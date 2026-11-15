@@ -62,6 +62,17 @@ export const api = {
     return data.session_id;
   },
 
+  async sendCalibration(sessionId: string, baseline: any): Promise<void> {
+    await fetch(`${CONFIG.CAPTURE_DETECT_URL}/calibration`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        ...baseline,
+      }),
+    }).catch((err) => console.warn('[API] sendCalibration failed:', err));
+  },
+
   async submitExplanation(sessionId: string, explanation: string): Promise<void> {
     const res = await fetch(`${CONFIG.REVIEW_REPORT_URL}/student/explain`, {
       method: 'POST',
