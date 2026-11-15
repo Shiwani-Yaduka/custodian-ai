@@ -9,6 +9,7 @@ Usage:
     python scripts/dev.py test
     python scripts/dev.py lint
     python scripts/dev.py fairness
+    python scripts/dev.py simulate [options]
     python scripts/dev.py seed
     python scripts/dev.py run
     python scripts/dev.py stop
@@ -100,8 +101,18 @@ def cmd_fairness():
     """Run fairness evaluation suite."""
     print("=== [fairness] Running fairness evaluation suite ===")
     py = get_python()
-    fairness_cmd = f'"{py}" -m pytest fairness/'
-    return run_command(fairness_cmd)
+    res = run_command(f'"{py}" fairness/run.py')
+    if res != 0:
+        return res
+    return run_command(f'"{py}" -m pytest fairness/tests')
+
+
+def cmd_simulate():
+    """Run threshold what-if policy simulator."""
+    print("=== [simulate] Running Policy What-If Simulator ===")
+    py = get_python()
+    args = " ".join(sys.argv[2:])
+    return run_command(f'"{py}" simulator/cli.py {args}')
 
 
 def cmd_seed():
@@ -297,6 +308,7 @@ def main():
         "test": cmd_test,
         "lint": cmd_lint,
         "fairness": cmd_fairness,
+        "simulate": cmd_simulate,
         "seed": cmd_seed,
         "run": cmd_run,
         "stop": cmd_stop,

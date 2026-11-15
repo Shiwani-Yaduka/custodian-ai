@@ -91,6 +91,7 @@ class RiskEngine:
         self,
         observation: Observation,
         now: Optional[float] = None,
+        resolution_multiplier: float = 1.0,
     ) -> Tuple[ProcessedObservation, RiskState]:
         """Ingest a new observation, calculate its weight, and update session risk state."""
         current_time = self.get_current_time(now if now is not None else observation.timestamp)
@@ -114,7 +115,7 @@ class RiskEngine:
             state.observation_history,
         )
 
-        raw_weight = base_weight * observation.confidence * d_i * r_i
+        raw_weight = base_weight * observation.confidence * d_i * r_i * resolution_multiplier
 
         processed = ProcessedObservation(
             observation=observation,
@@ -131,6 +132,18 @@ class RiskEngine:
         self._recalculate_state(state, current_time)
         self.state_store.set_state(observation.session_id, state)
         return processed, state
+
+    def apply_resolved_observation(
+        self,
+        observation: Observation,
+        multiplier: float = 1.0,
+        now: Optional[float] = None,
+    ) -> ProcessedObservation:
+        """Ingest a resolved observation scaled by the investigator's resolution multiplier."""
+        processed, _ = self.process_observation(
+            observation, now=now, resolution_multiplier=multiplier
+        )
+        return processed
 
     def evaluate_session(
         self,

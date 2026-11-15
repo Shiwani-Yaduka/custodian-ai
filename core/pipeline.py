@@ -81,6 +81,45 @@ class InProcessPipeline:
         # 1. Feature detection and calibration
         is_calibrating, progress, observations = self.detector.process_features(batch)
 
+        if is_calibrating:
+            risk_state = self.risk_engine.get_state(batch.session_id, now=batch.timestamp)
+            gating_decision = GatingDecision(
+                approved=True,
+                target_tier=Tier.CLEAR,
+                candidate_tier=Tier.CLEAR,
+                current_tier=Tier.CLEAR,
+                score=0.0,
+                reason="Calibration phase active",
+            )
+            return PipelineResult(
+                session_id=batch.session_id,
+                timestamp=batch.timestamp,
+                is_calibrating=True,
+                calibration_progress=progress,
+                observations=[],
+                risk_state=risk_state,
+                gating_decision=gating_decision,
+                system_action=SystemAction.NOTHING_SHOWN,
+                active_warning=None,
+                case_resolutions=[],
+            )
+
+        res = self.process_observations(
+            session_id=batch.session_id,
+            observations=observations,
+            timestamp=batch.timestamp,
+        )
+        res.is_calibrating = False
+        res.calibration_progress = progress
+        return res
+
+    def process_observations(
+        self,
+        session_id: str,
+        observations: List[Observation],
+        timestamp: float,
+    ) -> PipelineResult:
+        """Process high-level sensory observations through investigator, risk engine, and gating."""
         case_resolutions: List[CaseResolution] = []
 
         # 2. Ingest observations through investigator and risk engine
@@ -94,8 +133,29 @@ class InProcessPipeline:
                 timestamp=obs.timestamp,
             )
 
-            # Evaluate whether an investigation case should open
-            case = self.investigator.evaluate_observation(obs)
+            # Evaluate whether an investigation case should open using current state and repetition
+            current_state = self.risk_engine.get_state(obs.session_id, now=obs.timestamp)
+            recent_obs = [
+                o
+                for o in current_state.observation_history
+                if o.observation.signal == obs.signal and (obs.timestamp - o.calculated_at) <= 300.0
+            ]
+            repetition_count = len(recent_obs) + 1
+            d_i = self.risk_engine.calculate_duration_factor(obs.signal, obs.duration)
+            r_i = self.risk_engine.calculate_repetition_multiplier(
+                obs.signal, obs.timestamp, current_state.observation_history
+            )
+            sig_def = self.risk_policy.signals.get(obs.signal)
+            base_w = sig_def.b_s if sig_def else 10.0
+            pred_weight = base_w * obs.confidence * d_i * r_i
+
+            case = self.investigator.evaluate_observation(
+                observation=obs,
+                current_risk_state=current_state,
+                predicted_raw_weight=pred_weight,
+                repetition_count=repetition_count,
+                now=obs.timestamp,
+            )
 
             if case is not None:
                 # Case opened: record in ledger
@@ -108,7 +168,7 @@ class InProcessPipeline:
                 )
 
                 # Execute investigation probes
-                resolution = self.investigator.run_investigation(case.case_id)
+                resolution = self.investigator.run_investigation(case.case_id, now=timestamp)
                 case_resolutions.append(resolution)
 
                 # Record executed probes in ledger
@@ -129,6 +189,11 @@ class InProcessPipeline:
                     resolution=resolution.status.value,
                     multiplier=resolution.multiplier,
                     resolved_at=resolution.resolved_at,
+                )
+
+                # Apply released observation to risk engine scaled by resolution multiplier
+                self.risk_engine.apply_resolved_observation(
+                    obs, multiplier=resolution.multiplier, now=obs.timestamp
                 )
 
                 # Record contribution in ledger
@@ -159,15 +224,15 @@ class InProcessPipeline:
                 )
 
         # 3. Query updated risk state
-        risk_state = self.risk_engine.get_state(batch.session_id, now=batch.timestamp)
+        risk_state = self.risk_engine.get_state(session_id, now=timestamp)
 
         # 4. Gating evaluation
         contributing_channels = risk_state.contributing_channels
 
-        warnings_shown = self.ledger_repo.get_warnings(batch.session_id)
+        warnings_shown = self.ledger_repo.get_warnings(session_id)
         warnings_count = len(warnings_shown)
 
-        cases = self.ledger_repo.get_cases(batch.session_id)
+        cases = self.ledger_repo.get_cases(session_id)
         deliberate_cases_count = sum(
             1 for c in cases
             if c.resolution == "deliberate"
@@ -197,10 +262,10 @@ class InProcessPipeline:
                     warning_number=1,
                 )
                 self.ledger_repo.append_warning(
-                    session_id=batch.session_id,
+                    session_id=session_id,
                     warning_number=1,
                     message=msg,
-                    timestamp=batch.timestamp,
+                    timestamp=timestamp,
                 )
                 active_warning = msg
             elif new_tier == Tier.ELEVATED:
@@ -210,26 +275,26 @@ class InProcessPipeline:
                     warning_number=2,
                 )
                 self.ledger_repo.append_warning(
-                    session_id=batch.session_id,
+                    session_id=session_id,
                     warning_number=2,
                     message=msg,
-                    timestamp=batch.timestamp,
+                    timestamp=timestamp,
                 )
                 active_warning = msg
             elif new_tier == Tier.HELD:
                 self.ledger_repo.append_hold(
-                    session_id=batch.session_id,
+                    session_id=session_id,
                     evidence_summary=gating_decision.reason,
-                    paused_at=batch.timestamp,
+                    paused_at=timestamp,
                 )
                 self.ledger_repo.update_session_status(
-                    session_id=batch.session_id,
+                    session_id=session_id,
                     status="held",
                 )
 
             # Record approved decision in ledger
             self.ledger_repo.append_decision(
-                session_id=batch.session_id,
+                session_id=session_id,
                 decision_type="TIER_TRANSITION",
                 score=risk_state.total_score,
                 from_tier=risk_state.current_tier.value,
@@ -238,12 +303,12 @@ class InProcessPipeline:
                 gate_passed=True,
                 reason=gating_decision.reason,
                 blocked_reason=None,
-                timestamp=batch.timestamp,
+                timestamp=timestamp,
             )
         elif not gating_decision.approved:
             # Record blocked escalation in ledger
             self.ledger_repo.append_decision(
-                session_id=batch.session_id,
+                session_id=session_id,
                 decision_type="BLOCKED_ESCALATION",
                 score=risk_state.total_score,
                 from_tier=risk_state.current_tier.value,
@@ -252,16 +317,16 @@ class InProcessPipeline:
                 gate_passed=False,
                 reason=gating_decision.reason,
                 blocked_reason=gating_decision.blocked_reason,
-                timestamp=batch.timestamp,
+                timestamp=timestamp,
             )
 
         system_action = determine_system_action(gating_decision.target_tier)
 
         return PipelineResult(
-            session_id=batch.session_id,
-            timestamp=batch.timestamp,
-            is_calibrating=is_calibrating,
-            calibration_progress=progress,
+            session_id=session_id,
+            timestamp=timestamp,
+            is_calibrating=False,
+            calibration_progress=1.0,
             observations=observations,
             risk_state=risk_state,
             gating_decision=gating_decision,

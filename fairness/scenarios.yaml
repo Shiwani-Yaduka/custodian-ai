@@ -1,0 +1,525 @@
+# Custodian AI Fairness Regression Suite — 32 Benchmark Scenarios
+# Grouped into 6 behavioral/environmental classes:
+# 1. reading_thinking_habits (Must Not Flag)
+# 2. movement_patterns (Must Not Flag)
+# 3. lighting_conditions (Must Not Flag)
+# 4. equipment_faults (Must Not Flag)
+# 5. environmental_noise (Must Not Flag)
+# 6. deliberate_violations (Must Catch)
+
+scenarios:
+  # =========================================================================
+  # CLASS 1: READING & THINKING HABITS (Must Not Flag)
+  # =========================================================================
+
+  - id: calm_attentive_student
+    title: Calm Attentive Student
+    class: reading_thinking_habits
+    label: must_not_flag
+    rationale: Normal, focused student answering questions with steady attention. Must remain in CLEAR tier.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 35.0, signal: gaze_off_screen, duration: 1.0, confidence: 0.85 }
+      - { t: 90.0, signal: head_turn, duration: 1.5, confidence: 0.85 }
+      - { t: 150.0, signal: gaze_off_screen, duration: 1.2, confidence: 0.90 }
+
+  - id: brief_glance_at_clock
+    title: Brief Glance at Wall Clock
+    class: reading_thinking_habits
+    label: must_not_flag
+    rationale: Looking up at a wall clock or timer for 2.5s is well below the 4.0s grace window. Must contribute 0 risk.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 40.0, signal: gaze_off_screen, duration: 2.5, confidence: 0.85 }
+      - { t: 41.0, signal: head_turn, duration: 2.0, confidence: 0.80 }
+
+  - id: reading_long_essay_prompt
+    title: Reading Long Essay Prompt
+    class: reading_thinking_habits
+    label: must_not_flag
+    rationale: Eyes scanning across a wide 27-inch monitor while reading a dense paragraph. Single sensor with low weight must decay away.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 45.0, signal: gaze_off_screen, duration: 5.0, confidence: 0.70 }
+      - { t: 50.0, signal: gaze_off_screen, duration: 4.5, confidence: 0.65 }
+
+  - id: looking_up_to_think_often
+    title: Looking Up to Think Often
+    class: reading_thinking_habits
+    label: must_not_flag
+    rationale: Student gazes up toward ceiling while mentally formulating code or math. Bursts are <= 3.0s (under 4s grace).
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 40.0, signal: head_turn, duration: 3.0, confidence: 0.85 }
+      - { t: 85.0, signal: head_turn, duration: 2.8, confidence: 0.85 }
+      - { t: 135.0, signal: head_turn, duration: 3.0, confidence: 0.85 }
+
+  - id: mumbling_math_to_self
+    title: Mumbling Math Calculation Quietly
+    class: reading_thinking_habits
+    label: must_not_flag
+    rationale: Quiet self-talk or vocalizing steps under breath for 4.0s is under the 5.0s speech grace window.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 50.0, signal: speech_detected, duration: 4.0, confidence: 0.75 }
+
+  - id: stretching_neck_upward
+    title: Stretching Neck and Shoulders
+    class: reading_thinking_habits
+    label: must_not_flag
+    rationale: Postural stretch after prolonged desk sitting. Head tilted back for 3.5s (under 4s grace).
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 60.0, signal: head_turn, duration: 3.5, confidence: 0.85 }
+
+  # =========================================================================
+  # CLASS 2: MOVEMENT PATTERNS (Must Not Flag)
+  # =========================================================================
+
+  - id: neurodivergent_adhd_fidgeting
+    title: Neurodivergent ADHD Fidgeting
+    class: movement_patterns
+    label: must_not_flag
+    rationale: Frequent brief postural adjustments and rapid head shifts. All individual bursts remain within grace windows.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 35.0, signal: head_turn, duration: 2.5, confidence: 0.80 }
+      - { t: 55.0, signal: gaze_off_screen, duration: 2.0, confidence: 0.75 }
+      - { t: 80.0, signal: head_turn, duration: 2.8, confidence: 0.80 }
+      - { t: 110.0, signal: gaze_off_screen, duration: 2.2, confidence: 0.75 }
+      - { t: 140.0, signal: head_turn, duration: 2.5, confidence: 0.80 }
+
+  - id: dropping_pen_retrieving
+    title: Dropping Pen and Retrieving from Floor
+    class: movement_patterns
+    label: must_not_flag
+    rationale: Student ducks under desk for 4.0s to retrieve a dropped pen. Face absent grace is 5.0s, so risk is 0.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 50.0, signal: face_absent, duration: 4.0, confidence: 0.90 }
+
+  - id: scratching_face_occlusion
+    title: Scratching Face Partial Occlusion
+    class: movement_patterns
+    label: must_not_flag
+    rationale: Hand rests on chin or rubs eye for 3.0s, causing temporary low landmark confidence.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 45.0, signal: face_absent, duration: 3.0, confidence: 0.50 }
+
+  - id: sipping_water_bottle
+    title: Sipping Water Bottle
+    class: movement_patterns
+    label: must_not_flag
+    rationale: Lifting water bottle to drink blocks mouth and lower face for 3.5s (under 5s grace).
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 60.0, signal: face_absent, duration: 3.5, confidence: 0.80 }
+
+  - id: adjusting_glasses_frequently
+    title: Adjusting Eyeglasses
+    class: movement_patterns
+    label: must_not_flag
+    rationale: Student pushes glasses back up bridge of nose for 1.5s bursts.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 40.0, signal: gaze_off_screen, duration: 1.5, confidence: 0.50 }
+      - { t: 90.0, signal: gaze_off_screen, duration: 1.8, confidence: 0.50 }
+
+  # =========================================================================
+  # CLASS 3: LIGHTING CONDITIONS (Must Not Flag)
+  # =========================================================================
+
+  - id: poor_room_lighting_underexposed
+    title: Poor Room Lighting (Evening Exam)
+    class: lighting_conditions
+    label: must_not_flag
+    rationale: Dim room lamp causes detector confidence to drop to 0.45 (<0.60 threshold). Investigator opens case and resolves ordinary.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: ordinary
+    probe_responses:
+      secondary_detector_cross_check: single_face_confirmed
+      soft_reminder: behavior_corrected
+    timeline:
+      - { t: 40.0, signal: gaze_off_screen, duration: 6.0, confidence: 0.45 }
+
+  - id: transient_backlight_glare
+    title: Transient Window Backlight Glare
+    class: lighting_conditions
+    label: must_not_flag
+    rationale: Cloud passes sun, causing transient bright glare behind student for 3.0s. Under grace window.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 50.0, signal: face_absent, duration: 3.0, confidence: 0.45 }
+
+  - id: eyeglass_reflection_jitter
+    title: Monitor Reflection on Eyeglasses
+    class: lighting_conditions
+    label: must_not_flag
+    rationale: Screen glow reflects in lenses causing intermittent 2.5s gaze tracking jitter. Under grace.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 45.0, signal: gaze_off_screen, duration: 2.5, confidence: 0.55 }
+      - { t: 100.0, signal: gaze_off_screen, duration: 2.8, confidence: 0.55 }
+
+  # =========================================================================
+  # CLASS 4: EQUIPMENT & HARDWARE (Must Not Flag)
+  # =========================================================================
+
+  - id: short_network_drop_10s
+    title: Short Wi-Fi Drop (10s)
+    class: equipment_faults
+    label: must_not_flag
+    rationale: Temporary packet loss for 10s. Investigator tests telemetry, resolves TECHNICAL with 0 weight.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: technical
+    probe_responses:
+      network_heartbeat_check: heartbeat_lost
+      device_telemetry_check: hardware_fault
+    timeline:
+      - { t: 40.0, signal: network_drop, duration: 10.0, confidence: 0.55 }
+
+  - id: long_network_outage_45s
+    title: Extended Campus Network Outage (45s)
+    class: equipment_faults
+    label: must_not_flag
+    rationale: Router reboot causes prolonged drop. Investigator confirms hardware/ISP fault; zero penalty and channel discounted.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: technical
+    probe_responses:
+      network_heartbeat_check: heartbeat_lost
+      device_telemetry_check: hardware_fault
+    timeline:
+      - { t: 40.0, signal: network_drop, duration: 45.0, confidence: 0.55 }
+
+  - id: failing_webcam_repeats_15x
+    title: Failing Webcam Flapping for an Hour
+    class: equipment_faults
+    label: must_not_flag
+    rationale: Faulty USB port disconnects camera 15 times. Single camera channel accumulator caps at 40.0, never crossing 45.0 WARNED.
+    expected_max_tier: WATCHING
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 40.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 60.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 80.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 100.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 120.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 140.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 160.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 180.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 200.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 220.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 240.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 260.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 280.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 300.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+      - { t: 320.0, signal: face_absent, duration: 8.0, confidence: 0.85 }
+
+  - id: low_frame_rate_weak_gpu
+    title: Low Frame Rate on Older Hardware
+    class: equipment_faults
+    label: must_not_flag
+    rationale: Laptop CPU throttling drops webcam fps below 2.5. Low confidence opens case; resolves technical.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: technical
+    probe_responses:
+      device_telemetry_check: hardware_fault
+    timeline:
+      - { t: 45.0, signal: low_frame_rate, duration: 12.0, confidence: 0.55 }
+
+  - id: camera_driver_glitch_transient
+    title: Transient Camera Driver Glitch
+    class: equipment_faults
+    label: must_not_flag
+    rationale: Operating system camera service restarts, briefly cutting track for 4.0s. Resolves technical.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: technical
+    probe_responses:
+      device_telemetry_check: hardware_fault
+    timeline:
+      - { t: 50.0, signal: camera_track_ended, duration: 4.0, confidence: 0.55 }
+
+  - id: intermittent_wifi_jitter
+    title: Intermittent Wi-Fi Jitter
+    class: equipment_faults
+    label: must_not_flag
+    rationale: Occasional 3.0s heartbeat delay every minute. All blips remain below 10.0s grace window.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 40.0, signal: network_drop, duration: 3.0, confidence: 0.55 }
+      - { t: 100.0, signal: network_drop, duration: 3.0, confidence: 0.55 }
+      - { t: 160.0, signal: network_drop, duration: 3.0, confidence: 0.55 }
+
+  # =========================================================================
+  # CLASS 5: ENVIRONMENTAL & OS NOISE (Must Not Flag)
+  # =========================================================================
+
+  - id: sibling_walks_past_doorway
+    title: Sibling Walks Past Doorway
+    class: environmental_noise
+    label: must_not_flag
+    rationale: Family member appears in background for 2.5s. Secondary cross-check confirms single face returns; resolves ordinary.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: ordinary
+    probe_responses:
+      secondary_detector_cross_check: single_face_confirmed
+      soft_reminder: behavior_corrected
+    timeline:
+      - { t: 45.0, signal: multiple_faces, duration: 2.5, confidence: 0.85 }
+
+  - id: pet_cat_jumps_on_desk
+    title: Pet Cat Jumps on Desk
+    class: environmental_noise
+    label: must_not_flag
+    rationale: Cat briefly walks in front of camera for 3.0s. Below 5s grace window for face absent.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 50.0, signal: face_absent, duration: 3.0, confidence: 0.90 }
+
+  - id: street_traffic_ambulance_siren
+    title: Ambulance Siren Outside Window
+    class: environmental_noise
+    label: must_not_flag
+    rationale: Loud emergency siren for 15s. Single microphone channel capped at 40.0, never crossing 45.0 WARNED.
+    expected_max_tier: WATCHING
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 45.0, signal: speech_detected, duration: 15.0, confidence: 0.80 }
+
+  - id: coughing_and_throat_clearing
+    title: Severe Coughing Fit
+    class: environmental_noise
+    label: must_not_flag
+    rationale: Student has coughing spell for 4.5s. Below 5.0s speech grace window.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 55.0, signal: speech_detected, duration: 4.5, confidence: 0.85 }
+
+  - id: accidental_tab_switch_once
+    title: Accidental Alt-Tab Switch Once
+    class: environmental_noise
+    label: must_not_flag
+    rationale: Student accidentally hits Alt+Tab, immediately returns in 1.5s (under 2.0s grace window).
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 60.0, signal: tab_hidden, duration: 1.5, confidence: 1.0 }
+
+  - id: os_update_notification_popup
+    title: OS Notification Popup Unfocuses Window
+    class: environmental_noise
+    label: must_not_flag
+    rationale: Antivirus banner blurs exam window for 2.0s (under 3.0s grace window).
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 50.0, signal: window_blur, duration: 2.0, confidence: 1.0 }
+
+  - id: system_notification_chime_and_blur
+    title: OS Notification Ding and Window Blur
+    class: environmental_noise
+    label: must_not_flag
+    rationale: Notification popup unfocuses exam window for 2.0s while playing audio ding for 3.0s. Both are below grace windows (3s window, 5s speech).
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 50.0, signal: window_blur, duration: 2.0, confidence: 1.0 }
+      - { t: 50.5, signal: speech_detected, duration: 3.0, confidence: 0.70 }
+
+  - id: scratchpad_calculation_and_mumble
+    title: Scratchpad Calculation with Quiet Mumbling
+    class: reading_thinking_habits
+    label: must_not_flag
+    rationale: Student looks down at approved scratchpad for 3.0s while vocalizing numbers for 3.5s. Below 4.0s gaze grace and 5.0s speech grace.
+    expected_max_tier: CLEAR
+    expected_hold: false
+    expected_resolution: null
+    timeline:
+      - { t: 45.0, signal: gaze_off_screen, duration: 3.0, confidence: 0.80 }
+      - { t: 45.5, signal: speech_detected, duration: 3.5, confidence: 0.75 }
+
+  # =========================================================================
+  # CLASS 6: DELIBERATE VIOLATIONS (Must Catch — HELD Expected)
+  # =========================================================================
+
+  - id: notes_plus_speech_corroborated
+    title: Looking at Notes with Whisper Corroboration
+    class: deliberate_violations
+    label: must_catch
+    rationale: Candidate repeatedly stares down at hidden notes for 25s while whispering answers into phone. 2 channels, deliberate finding, must reach HELD.
+    expected_max_tier: HELD
+    expected_hold: true
+    expected_resolution: deliberate
+    probe_responses:
+      high_res_frame_burst: clear_secondary_actor
+      secondary_detector_cross_check: anomaly_confirmed
+      soft_reminder: behavior_continued
+      short_explanation_prompt: prompt_ignored
+    timeline:
+      - { t: 40.0, signal: head_turn, duration: 25.0, confidence: 0.90 }
+      - { t: 42.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 70.0, signal: head_turn, duration: 25.0, confidence: 0.90 }
+      - { t: 72.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 100.0, signal: head_turn, duration: 25.0, confidence: 0.90 }
+      - { t: 102.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 130.0, signal: head_turn, duration: 25.0, confidence: 0.90 }
+      - { t: 132.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+
+  - id: repeated_tab_switching_plus_speech
+    title: Repeated Tab Switching with Voice Dictation
+    class: deliberate_violations
+    label: must_catch
+    rationale: Candidate repeatedly switches to search engine while dictating question prompts. 2 channels (window + mic), deliberate finding, must reach HELD.
+    expected_max_tier: HELD
+    expected_hold: true
+    expected_resolution: deliberate
+    probe_responses:
+      high_res_frame_burst: clear_secondary_actor
+      secondary_detector_cross_check: anomaly_confirmed
+      soft_reminder: behavior_continued
+      short_explanation_prompt: prompt_ignored
+    timeline:
+      - { t: 40.0, signal: tab_hidden, duration: 20.0, confidence: 1.0 }
+      - { t: 42.0, signal: speech_detected, duration: 20.0, confidence: 0.90 }
+      - { t: 70.0, signal: tab_hidden, duration: 20.0, confidence: 1.0 }
+      - { t: 72.0, signal: speech_detected, duration: 20.0, confidence: 0.90 }
+      - { t: 100.0, signal: tab_hidden, duration: 20.0, confidence: 1.0 }
+      - { t: 102.0, signal: speech_detected, duration: 20.0, confidence: 0.90 }
+      - { t: 130.0, signal: tab_hidden, duration: 20.0, confidence: 1.0 }
+      - { t: 132.0, signal: speech_detected, duration: 20.0, confidence: 0.90 }
+
+  - id: persistent_offscreen_gaze_second_person
+    title: Persistent Offscreen Gaze with Second Person
+    class: deliberate_violations
+    label: must_catch
+    rationale: Second person sits off-camera; candidate stares off-screen while whispered dialogue occurs. 3 channels, deliberate finding, must reach HELD.
+    expected_max_tier: HELD
+    expected_hold: true
+    expected_resolution: deliberate
+    probe_responses:
+      high_res_frame_burst: clear_secondary_actor
+      secondary_detector_cross_check: anomaly_confirmed
+      soft_reminder: behavior_continued
+      short_explanation_prompt: prompt_ignored
+    timeline:
+      - { t: 40.0, signal: gaze_off_screen, duration: 25.0, confidence: 0.90 }
+      - { t: 42.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 70.0, signal: gaze_off_screen, duration: 25.0, confidence: 0.90 }
+      - { t: 72.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 100.0, signal: gaze_off_screen, duration: 25.0, confidence: 0.90 }
+      - { t: 102.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 130.0, signal: gaze_off_screen, duration: 25.0, confidence: 0.90 }
+      - { t: 132.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+
+  - id: phone_hidden_under_desk
+    title: Phone Hidden Under Desk with Window Blurs
+    class: deliberate_violations
+    label: must_catch
+    rationale: Candidate looks down at phone beneath desk while clicking outside exam window to an unauthorized document. Must reach HELD.
+    expected_max_tier: HELD
+    expected_hold: true
+    expected_resolution: deliberate
+    probe_responses:
+      high_res_frame_burst: clear_secondary_actor
+      secondary_detector_cross_check: anomaly_confirmed
+      soft_reminder: behavior_continued
+      short_explanation_prompt: prompt_ignored
+    timeline:
+      - { t: 40.0, signal: head_turn, duration: 25.0, confidence: 0.90 }
+      - { t: 42.0, signal: window_blur, duration: 22.0, confidence: 1.0 }
+      - { t: 70.0, signal: head_turn, duration: 25.0, confidence: 0.90 }
+      - { t: 72.0, signal: window_blur, duration: 22.0, confidence: 1.0 }
+      - { t: 100.0, signal: head_turn, duration: 25.0, confidence: 0.90 }
+      - { t: 102.0, signal: window_blur, duration: 22.0, confidence: 1.0 }
+      - { t: 130.0, signal: head_turn, duration: 25.0, confidence: 0.90 }
+      - { t: 132.0, signal: window_blur, duration: 22.0, confidence: 1.0 }
+
+  - id: collaborative_exam_solving
+    title: Two Students In-Frame Collaborating
+    class: deliberate_violations
+    label: must_catch
+    rationale: Two people visible on screen discussing test questions while exam tab is hidden. 3 channels active, must reach HELD.
+    expected_max_tier: HELD
+    expected_hold: true
+    expected_resolution: deliberate
+    probe_responses:
+      high_res_frame_burst: clear_secondary_actor
+      secondary_detector_cross_check: anomaly_confirmed
+      soft_reminder: behavior_continued
+      short_explanation_prompt: prompt_ignored
+    timeline:
+      - { t: 40.0, signal: multiple_faces, duration: 25.0, confidence: 0.95 }
+      - { t: 42.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 70.0, signal: multiple_faces, duration: 25.0, confidence: 0.95 }
+      - { t: 72.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 100.0, signal: multiple_faces, duration: 25.0, confidence: 0.95 }
+      - { t: 102.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 130.0, signal: multiple_faces, duration: 25.0, confidence: 0.95 }
+      - { t: 132.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+
+  - id: brazen_browsing_and_phone_call
+    title: Brazen Web Browsing and Voice Call
+    class: deliberate_violations
+    label: must_catch
+    rationale: Full active phone call while exam tab is minimized. Must reach HELD.
+    expected_max_tier: HELD
+    expected_hold: true
+    expected_resolution: deliberate
+    probe_responses:
+      high_res_frame_burst: clear_secondary_actor
+      secondary_detector_cross_check: anomaly_confirmed
+      soft_reminder: behavior_continued
+      short_explanation_prompt: prompt_ignored
+    timeline:
+      - { t: 40.0, signal: tab_hidden, duration: 25.0, confidence: 1.0 }
+      - { t: 42.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 70.0, signal: tab_hidden, duration: 25.0, confidence: 1.0 }
+      - { t: 72.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 100.0, signal: tab_hidden, duration: 25.0, confidence: 1.0 }
+      - { t: 102.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
+      - { t: 130.0, signal: tab_hidden, duration: 25.0, confidence: 1.0 }
+      - { t: 132.0, signal: speech_detected, duration: 25.0, confidence: 0.90 }
