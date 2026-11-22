@@ -32,7 +32,7 @@ RUN mkdir -p public/wasm && cp -r node_modules/@mediapipe/tasks-vision/wasm/* pu
 RUN npm run build
 
 # ---- Stage 2: tiny non-root web server ----
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 USER root
 RUN apk update && apk upgrade --no-cache
 USER 101
