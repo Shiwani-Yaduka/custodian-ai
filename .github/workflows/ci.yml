@@ -117,7 +117,7 @@ jobs:
           echo "IMAGE=ghcr.io/${OWNER}/custodian-${{ matrix.name }}:${{ github.sha }}" >> "$GITHUB_ENV"
       - uses: docker/setup-buildx-action@v3
       - name: Build the image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
