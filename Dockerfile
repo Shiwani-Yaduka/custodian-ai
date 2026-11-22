@@ -3,7 +3,7 @@
 #   docker build --build-arg SERVICE=risk-engine -t custodian-risk-engine .
 # (GitHub Actions does this for you, so you never need Docker on your laptop.)
 
-FROM python:3.11-slim
+FROM python:3.15-slim
 
 ARG SERVICE
 
