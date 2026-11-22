@@ -3,3 +3,7 @@
 CVE-2026-85091
 CVE-2026-23949
 CVE-2026-24049
+
+# Pip vendored build-time CycloneDX SBOM false positives (setuptools in bom.cdx.json)
+CVE-2025-47273
+CVE-2024-6345
