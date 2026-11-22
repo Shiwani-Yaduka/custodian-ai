@@ -1,0 +1,17 @@
+# Keeps the backend image small and keeps secrets out of it.
+.git
+.github
+.venv
+.env
+.agent-notes
+**/__pycache__
+**/*.pyc
+**/*.db
+.pytest_cache
+node_modules
+web
+fairness
+simulator
+docs
+infra
+k8s

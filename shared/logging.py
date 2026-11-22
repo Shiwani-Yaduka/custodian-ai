@@ -8,9 +8,33 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 import time
 from typing import Any, Dict
+
+SENSITIVE_KEYS = {"password", "secret", "token", "authorization", "jwt", "key", "credential"}
+SENSITIVE_PATTERN = re.compile(
+    r'(?i)(password|secret|token|authorization|jwt|bearer)\s*[:=]\s*["\']?([^"\'\s]+)["\']?'
+)
+
+
+def redact_sensitive_data(val: Any) -> Any:
+    """Recursively redact passwords, tokens, and secret strings from log payloads."""
+    if isinstance(val, dict):
+        return {
+            k: (
+                "[REDACTED]"
+                if any(s in k.lower() for s in SENSITIVE_KEYS)
+                else redact_sensitive_data(v)
+            )
+            for k, v in val.items()
+        }
+    elif isinstance(val, list):
+        return [redact_sensitive_data(item) for item in val]
+    elif isinstance(val, str):
+        return SENSITIVE_PATTERN.sub(r"\1=[REDACTED]", val)
+    return val
 
 
 class JSONFormatter(logging.Formatter):
@@ -21,17 +45,19 @@ class JSONFormatter(logging.Formatter):
         self.service_name = service_name
 
     def format(self, record: logging.LogRecord) -> str:
+        raw_msg = record.getMessage()
+        sanitized_msg = redact_sensitive_data(raw_msg)
         log_entry: Dict[str, Any] = {
             "timestamp": time.time(),
             "service": self.service_name,
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": sanitized_msg,
         }
 
         # Include custom extra fields if present
         if hasattr(record, "extra") and isinstance(record.extra, dict):
-            log_entry["context"] = record.extra
+            log_entry["context"] = redact_sensitive_data(record.extra)
 
         if record.exc_info:
             log_entry["exception"] = self.formatException(record.exc_info)

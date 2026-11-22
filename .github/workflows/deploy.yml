@@ -1,0 +1,165 @@
+# START the demo: creates the EKS cluster, deploys the app, gives you the web address.
+# You run it yourself: GitHub > Actions > "Deploy demo (start)" > Run workflow.
+# Clicking that button is your approval to spend money (about USD 0.25 per hour).
+name: Deploy demo (start)
+
+on:
+  workflow_dispatch:
+    inputs:
+      k8s_version:
+        description: "Kubernetes version. Must be in STANDARD support (check the EKS console first)"
+        required: true
+        default: "1.36"
+      with_https:
+        description: "Create the CloudFront HTTPS address (needed for the real webcam)"
+        type: boolean
+        default: true
+      my_iam_arn:
+        description: "Optional: your own IAM user ARN, so you can run kubectl from CloudShell"
+        required: false
+        default: ""
+
+permissions:
+  id-token: write   # lets the job log in to AWS with OIDC (no stored keys)
+  contents: read
+
+concurrency:
+  group: custodian-demo
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: custodian-eks
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out which images to deploy
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "IMAGE_PREFIX=ghcr.io/${OWNER}" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=${{ github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Log in to AWS (OIDC, no keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 7200
+
+      - name: Who am I? (sanity check)
+        run: aws sts get-caller-identity --query Arn --output text
+
+      - name: Create the cluster (10-20 minutes)
+        env:
+          K8S_VERSION: ${{ inputs.k8s_version }}
+          MY_ARN: ${{ inputs.my_iam_arn }}
+        run: |
+          EXPIRES=$(date -u -d '+5 hours' +%Y-%m-%dT%H:%M:%SZ)
+          OVERRIDES=(ClusterName="$CLUSTER_NAME" KubernetesVersion="$K8S_VERSION")
+          if [ -n "$MY_ARN" ]; then OVERRIDES+=(ExtraAdminArn="$MY_ARN"); fi
+          aws cloudformation deploy \
+            --stack-name custodian-cluster \
+            --template-file infra/cluster.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides "${OVERRIDES[@]}" \
+            --tags project=custodian env=demo expires-at="$EXPIRES"
+
+      - name: Connect kubectl to the cluster
+        run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Install metrics-server (needed by the autoscaler)
+        run: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
+
+      - name: Create secrets inside the cluster
+        run: |
+          kubectl create namespace custodian --dry-run=client -o yaml | kubectl apply -f -
+          DB_PASS=$(aws secretsmanager get-secret-value --secret-id custodian/db-password --query SecretString --output text)
+          GRAFANA_PASS=$(aws secretsmanager get-secret-value --secret-id custodian/grafana-admin --query SecretString --output text)
+          JWT=$(openssl rand -hex 32)
+          echo "::add-mask::$DB_PASS"
+          echo "::add-mask::$GRAFANA_PASS"
+          echo "::add-mask::$JWT"
+          kubectl -n custodian create secret generic app-secrets \
+            --from-literal=POSTGRES_PASSWORD="$DB_PASS" \
+            --from-literal=DATABASE_URL="postgresql+psycopg://custodian:${DB_PASS}@postgres:5432/custodian" \
+            --from-literal=JWT_SECRET="$JWT" \
+            --from-literal=GRAFANA_ADMIN_PASSWORD="$GRAFANA_PASS" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy the app
+        run: |
+          kubectl -n custodian delete job seed --ignore-not-found
+          export IMAGE_PREFIX IMAGE_TAG
+          for f in k8s/*.yaml; do
+            echo "applying $f"
+            envsubst '${IMAGE_PREFIX} ${IMAGE_TAG}' < "$f" | kubectl apply -f -
+          done
+
+      - name: Wait until everything is running
+        run: |
+          for d in postgres redis capture-detect risk-engine investigator warn-escalate review-report web prometheus grafana; do
+            kubectl -n custodian rollout status deployment/$d --timeout=300s
+          done
+          kubectl -n custodian wait --for=condition=complete job/seed --timeout=300s || echo "seed job not finished yet, see the Troubleshooting section of the guide"
+          kubectl -n custodian get pods
+
+      - name: Wait for the public load balancer address
+        run: |
+          for i in $(seq 1 40); do
+            LB=$(kubectl -n custodian get svc web -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            [ -n "$LB" ] && break
+            sleep 10
+          done
+          echo "LB=$LB" >> "$GITHUB_ENV"
+          echo "Load balancer: $LB"
+
+      - name: Create the HTTPS address (CloudFront, 5-15 minutes)
+        if: ${{ inputs.with_https }}
+        run: |
+          EXPIRES=$(date -u -d '+5 hours' +%Y-%m-%dT%H:%M:%SZ)
+          aws cloudformation deploy \
+            --stack-name custodian-edge \
+            --template-file infra/edge.yaml \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides OriginDomain="$LB" \
+            --tags project=custodian env=demo expires-at="$EXPIRES"
+          URL=$(aws cloudformation describe-stacks --stack-name custodian-edge \
+                --query "Stacks[0].Outputs[?OutputKey=='Url'].OutputValue" --output text)
+          echo "HTTPS_URL=$URL" >> "$GITHUB_ENV"
+
+      - name: Show the addresses
+        run: |
+          {
+            echo "## Demo is running"
+            echo ""
+            echo "- Plain address (no webcam, demo mode works): http://${LB}"
+            if [ -n "${HTTPS_URL:-}" ]; then
+              echo "- HTTPS address (use this for the real webcam): ${HTTPS_URL}"
+              echo "- Grafana dashboards: ${HTTPS_URL}/grafana/"
+            else
+              echo "- Grafana dashboards: http://${LB}/grafana/"
+            fi
+            echo ""
+            echo "If you see a 503 error, wait 2-3 minutes: the load balancer is still warming up."
+            echo ""
+            echo "**REMEMBER: run the 'Teardown (stop)' workflow when you finish. The cluster costs about USD 0.25 per hour.**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: If something failed
+        if: failure()
+        run: |
+          {
+            echo "## Deploy FAILED"
+            echo "Resources may already exist and cost money. Run the 'Teardown (stop)' workflow, then fix the problem and deploy again."
+          } >> "$GITHUB_STEP_SUMMARY"

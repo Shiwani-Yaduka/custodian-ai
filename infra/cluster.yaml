@@ -1,0 +1,189 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Custodian AI - CLUSTER stack (DISPOSABLE). Created by the "deploy" workflow, deleted by "teardown".
+  Contains a small network, the EKS cluster and 2 small worker nodes.
+  While it exists it costs roughly USD 0.25 per hour. Delete it when you are not using it.
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: custodian-eks
+  KubernetesVersion:
+    Type: String
+    Default: "1.36"
+    Description: Must be a version in STANDARD support (check the EKS console). Old versions cost 6x more.
+  NodeInstanceType:
+    Type: String
+    Default: t3.medium
+  NodeCount:
+    Type: Number
+    Default: 2
+  ExtraAdminArn:
+    Type: String
+    Default: ""
+    Description: Optional. Your own IAM user/role ARN, so you can run kubectl from CloudShell.
+
+Conditions:
+  HasExtraAdmin: !Not [!Equals [!Ref ExtraAdminArn, ""]]
+
+Resources:
+
+  # ---------- Network: 2 public subnets, no NAT gateway (NAT costs about USD 32/month) ----------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: custodian-vpc
+
+  Igw:
+    Type: AWS::EC2::InternetGateway
+
+  IgwAttach:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref Igw
+
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+        - Key: !Sub "kubernetes.io/cluster/${ClusterName}"
+          Value: shared
+
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+        - Key: !Sub "kubernetes.io/cluster/${ClusterName}"
+          Value: shared
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IgwAttach
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref Igw
+
+  RouteAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetA
+      RouteTableId: !Ref RouteTable
+
+  RouteAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetB
+      RouteTableId: !Ref RouteTable
+
+  # ---------- IAM roles (names start with custodian-eks- so the deploy role may manage them) ----------
+  ClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: custodian-eks-cluster-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+  NodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: custodian-eks-node-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+  # ---------- The Kubernetes cluster ----------
+  Cluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      Version: !Ref KubernetesVersion
+      RoleArn: !GetAtt ClusterRole.Arn
+      # STANDARD = never slip into the expensive "extended support" period.
+      UpgradePolicy:
+        SupportType: STANDARD
+      # Whoever creates the cluster (the GitHub deploy role) becomes cluster admin.
+      AccessConfig:
+        AuthenticationMode: API_AND_CONFIG_MAP
+        BootstrapClusterCreatorAdminPermissions: true
+      ResourcesVpcConfig:
+        SubnetIds:
+          - !Ref SubnetA
+          - !Ref SubnetB
+        EndpointPublicAccess: true
+        EndpointPrivateAccess: false
+
+  NodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !Ref Cluster
+      NodegroupName: custodian-nodes
+      NodeRole: !GetAtt NodeRole.Arn
+      Subnets:
+        - !Ref SubnetA
+        - !Ref SubnetB
+      AmiType: AL2023_x86_64_STANDARD
+      CapacityType: ON_DEMAND
+      InstanceTypes:
+        - !Ref NodeInstanceType
+      DiskSize: 20
+      ScalingConfig:
+        MinSize: !Ref NodeCount
+        MaxSize: !Ref NodeCount
+        DesiredSize: !Ref NodeCount
+
+  # Optional: lets YOU run kubectl from CloudShell
+  ExtraAdminAccess:
+    Type: AWS::EKS::AccessEntry
+    Condition: HasExtraAdmin
+    Properties:
+      ClusterName: !Ref Cluster
+      PrincipalArn: !Ref ExtraAdminArn
+      AccessPolicies:
+        - PolicyArn: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+          AccessScope:
+            Type: cluster
+
+Outputs:
+  ClusterName:
+    Value: !Ref Cluster
+  VpcId:
+    Value: !Ref Vpc

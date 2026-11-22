@@ -1,0 +1,45 @@
+# STOP the demo: deletes the cluster and everything that costs money.
+# Run it yourself: GitHub > Actions > "Teardown (stop)" > Run workflow.
+# It also runs by itself every night as a safety net, in case you forget.
+name: Teardown (stop)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 22 * * *"   # 22:00 UTC = 03:30 in India
+
+permissions:
+  id-token: write
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  teardown:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to AWS (OIDC, no keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          role-duration-seconds: 7200
+
+      - name: Delete everything
+        run: bash scripts/aws/teardown.sh 2>&1 | tee teardown.log
+
+      - name: Show the result
+        if: always()
+        run: |
+          {
+            echo "## Teardown result"
+            echo '```'
+            tail -60 teardown.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

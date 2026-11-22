@@ -1,0 +1,7 @@
+# Keep Linux-style line endings for files that run on Linux (you use Windows).
+* text=auto
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+*.conf text eol=lf

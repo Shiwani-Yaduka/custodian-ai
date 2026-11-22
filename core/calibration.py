@@ -8,7 +8,7 @@ features into calibrated Observation objects with confidence estimation.
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -56,19 +56,67 @@ class CalibrationBaseline(BaseModel):
 class CalibrationDetector:
     """Manages session calibration baselines and feature-to-observation conversion."""
 
-    def __init__(self, calibration_window_seconds: float = 30.0):
+    def __init__(
+        self,
+        calibration_window_seconds: float = 30.0,
+        redis_client: Optional[Any] = None,
+    ):
         self.calibration_window_seconds = calibration_window_seconds
         self._baselines: Dict[str, CalibrationBaseline] = {}
         # Track persistent signal durations per session: (session_id, signal_name) -> start_time
         self._active_signals: Dict[Tuple[str, str], float] = {}
+        self._redis_client = redis_client
+
+    def _get_redis(self) -> Optional[Any]:
+        if self._redis_client is not None:
+            return self._redis_client
+        try:
+            from shared.config import get_settings
+
+            settings = get_settings()
+            if settings.state_store == "redis":
+                import redis
+
+                self._redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+                return self._redis_client
+        except Exception:
+            pass
+        return None
 
     def get_or_create_baseline(self, session_id: str, timestamp: float) -> CalibrationBaseline:
+        r = self._get_redis()
+        if r is not None:
+            raw = r.get(f"custodian:session:{session_id}:baseline")
+            if raw:
+                try:
+                    baseline = CalibrationBaseline.model_validate_json(raw)
+                    self._baselines[session_id] = baseline
+                    return baseline
+                except Exception:
+                    pass
+
         if session_id not in self._baselines:
             self._baselines[session_id] = CalibrationBaseline(
                 session_id=session_id,
                 start_time=timestamp,
             )
+            if r is not None:
+                r.set(
+                    f"custodian:session:{session_id}:baseline",
+                    self._baselines[session_id].model_dump_json(),
+                    ex=86400,
+                )
         return self._baselines[session_id]
+
+    def save_baseline(self, session_id: str, baseline: CalibrationBaseline) -> None:
+        self._baselines[session_id] = baseline
+        r = self._get_redis()
+        if r is not None:
+            r.set(
+                f"custodian:session:{session_id}:baseline",
+                baseline.model_dump_json(),
+                ex=86400,
+            )
 
     def process_features(
         self, batch: FeatureBatch

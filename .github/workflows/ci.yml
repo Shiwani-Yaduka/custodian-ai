@@ -1,0 +1,146 @@
+# CI = "continuous integration": every push is checked automatically, on GitHub's computers.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ---------- 1. Python code: lint, tests, fairness check, CloudFormation check ----------
+  backend:
+    name: Backend (lint, tests, fairness)
+    runs-on: ubuntu-latest
+    # Real Redis and Postgres for the tests (no Docker needed on your laptop).
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports: ["5432:5432"]
+    env:
+      REDIS_URL: redis://localhost:6379/0
+      TEST_DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install libraries
+        run: |
+          pip install -r requirements.txt
+          pip install cfn-lint yamllint
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Unit tests
+        run: pytest -q
+      - name: Fairness check (fails the build if the false-flag rate is too high)
+        run: |
+          python fairness/run.py | tee fairness.txt
+          { echo "### Fairness check"; echo '```'; tail -60 fairness.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check CloudFormation templates
+        run: cfn-lint infra/*.yaml
+      - name: Check YAML files
+        run: |
+          yamllint -d "{extends: relaxed, rules: {line-length: disable}}" k8s infra .github
+
+  # ---------- 2. Web app: tests and build ----------
+  web:
+    name: Web (tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm test -- --run
+      - run: npm run build
+
+  # ---------- 3. Secret scanning: fails if a password or key is found in the code or history ----------
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------- 4. Build the 6 Docker images, scan them, and (on main) publish them to GHCR ----------
+  images:
+    name: Image ${{ matrix.name }}
+    needs: [backend, web, secrets]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: capture-detect, context: ".",   file: Dockerfile,     service: capture_detect }
+          - { name: risk-engine,    context: ".",   file: Dockerfile,     service: risk_engine }
+          - { name: investigator,   context: ".",   file: Dockerfile,     service: investigator }
+          - { name: warn-escalate,  context: ".",   file: Dockerfile,     service: warn_escalate }
+          - { name: review-report,  context: ".",   file: Dockerfile,     service: review_report }
+          - { name: web,            context: web,   file: web/Dockerfile, service: "" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Work out the image name (GHCR needs lowercase)
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "IMAGE=ghcr.io/${OWNER}/custodian-${{ matrix.name }}:${{ github.sha }}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          build-args: SERVICE=${{ matrix.service }}
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      - name: Scan the image for known vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker push "$IMAGE"

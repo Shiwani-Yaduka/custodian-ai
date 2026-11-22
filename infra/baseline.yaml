@@ -1,0 +1,264 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Custodian AI - BASELINE stack. Create it ONCE by hand in the CloudFormation console.
+  It costs about USD 2 per month and is NOT deleted between demo sessions.
+  It holds: the encrypted evidence bucket, the GitHub-to-AWS login (OIDC),
+  the deploy role, two generated passwords (Secrets Manager) and budget alerts.
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9-]+$"
+    Description: Your GitHub username (exact capitalisation)
+  GitHubRepo:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9._-]+$"
+    Description: Your repository name (exact capitalisation)
+  AlertEmail:
+    Type: String
+    Description: Email address that receives budget alerts
+  MonthlyBudgetUSD:
+    Type: Number
+    Default: 20
+    Description: Monthly budget in USD. Alerts fire at 25%, 50% and 100%.
+  EvidenceRetentionDays:
+    Type: Number
+    Default: 14
+    Description: Evidence clips are deleted automatically after this many days (the appeal window).
+
+Resources:
+
+  # ---------- 1. Encryption key for evidence ----------
+  EvidenceKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Custodian AI evidence encryption key
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AccountAdmin
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+
+  EvidenceKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/custodian-evidence
+      TargetKeyId: !Ref EvidenceKey
+
+  # ---------- 2. Evidence bucket (private, encrypted, auto-deleting) ----------
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "custodian-evidence-${AWS::AccountId}-${AWS::Region}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt EvidenceKey.Arn
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: delete-clips-after-appeal-window
+            Status: Enabled
+            Prefix: clips/
+            ExpirationInDays: !Ref EvidenceRetentionDays
+
+  EvidenceBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EvidenceBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt EvidenceBucket.Arn
+              - !Sub "${EvidenceBucket.Arn}/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  # ---------- 3. Generated passwords (never stored in git) ----------
+  DbPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: custodian/db-password
+      Description: Postgres password for the demo cluster
+      GenerateSecretString:
+        PasswordLength: 24
+        ExcludePunctuation: true
+
+  GrafanaSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: custodian/grafana-admin
+      Description: Grafana admin password for the demo cluster
+      GenerateSecretString:
+        PasswordLength: 24
+        ExcludePunctuation: true
+
+  # ---------- 4. GitHub Actions logs in to AWS WITHOUT any stored keys ----------
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: custodian-github-deploy
+      MaxSessionDuration: 7200
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+                # Only workflows running on the main branch of YOUR repo may use this role.
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubOwner}/${GitHubRepo}:ref:refs/heads/main"
+      Policies:
+        - PolicyName: custodian-deploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ServicesWeDeploy
+                Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - eks:*
+                  - ec2:*
+                  - elasticloadbalancing:*
+                  - cloudfront:*
+                Resource: "*"
+              - Sid: ReadOnlyOurSecrets
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref DbPasswordSecret
+                  - !Ref GrafanaSecret
+              - Sid: ManageOnlyCustodianRoles
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/custodian-eks-*"
+              - Sid: AttachOnlyTheFourEksPolicies
+                Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/custodian-eks-*"
+                Condition:
+                  ArnEquals:
+                    "iam:PolicyARN":
+                      - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+                      - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+                      - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+                      - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+              - Sid: PassRolesOnlyToEksAndEc2
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/custodian-eks-*"
+                Condition:
+                  StringEquals:
+                    "iam:PassedToService":
+                      - eks.amazonaws.com
+                      - ec2.amazonaws.com
+              - Sid: FirstTimeServiceLinkedRoles
+                Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    "iam:AWSServiceName":
+                      - eks.amazonaws.com
+                      - eks-nodegroup.amazonaws.com
+                      - elasticloadbalancing.amazonaws.com
+                      - autoscaling.amazonaws.com
+
+  # ---------- 5. Budget alerts ----------
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: custodian-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUSD
+          Unit: USD
+        CostTypes:
+          IncludeCredit: false
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 25
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 50
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+
+Outputs:
+  DeployRoleArn:
+    Description: Put this in GitHub as the repository variable AWS_ROLE_ARN
+    Value: !GetAtt DeployRole.Arn
+  EvidenceBucketName:
+    Value: !Ref EvidenceBucket
+  EvidenceKeyArn:
+    Value: !GetAtt EvidenceKey.Arn

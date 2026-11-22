@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from core.models import Observation, RiskState
 from core.policy import load_policy
 from core.risk import RiskEngine
-from core.state import InMemoryStateStore
+from core.state import InMemoryStateStore, RedisStateStore
 from shared.config import get_settings
 from shared.logging import setup_json_logging
 from shared.metrics import MetricsRegistry
@@ -45,7 +45,11 @@ app.add_middleware(
 )
 
 policy = load_policy()
-state_store = InMemoryStateStore()
+state_store = (
+    RedisStateStore(redis_url=settings.redis_url)
+    if settings.state_store == "redis"
+    else InMemoryStateStore()
+)
 engine = RiskEngine(policy=policy, state_store=state_store)
 
 

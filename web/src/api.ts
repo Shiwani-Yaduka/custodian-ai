@@ -192,7 +192,11 @@ export const api = {
   },
 
   async runScenario(scenarioId: string, sessionId?: string): Promise<ScenarioResult> {
-    const url = new URL(`${CONFIG.REVIEW_REPORT_URL}/scenarios/run/${scenarioId}`);
+    const baseOrigin =
+      typeof window !== 'undefined' && window.location
+        ? window.location.origin
+        : 'http://127.0.0.1:8005';
+    const url = new URL(`${CONFIG.REVIEW_REPORT_URL}/scenarios/run/${scenarioId}`, baseOrigin);
     if (sessionId) url.searchParams.set('session_id', sessionId);
     const res = await fetch(url.toString(), { method: 'POST' });
     if (!res.ok) {

@@ -44,11 +44,21 @@ class Settings(BaseSettings):
     demo_faculty1_username: str = Field(default="faculty1", alias="DEMO_FACULTY1_USERNAME")
     demo_faculty1_password: str = Field(default="faculty1pass", alias="DEMO_FACULTY1_PASSWORD")
 
-    # Database
+    # Database & Storage
     database_url: str = Field(
         default="sqlite:///./custodian.db",
         alias="DATABASE_URL",
     )
+    state_store: Literal["memory", "redis"] = Field(default="memory", alias="STATE_STORE")
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    demo_mode: bool = Field(default=True, alias="DEMO_MODE")
+
+    # Service Addresses (Container & Cloud Inter-Service Communication)
+    capture_detect_url: str = Field(default="http://127.0.0.1:8001", alias="CAPTURE_DETECT_URL")
+    risk_engine_url: str = Field(default="http://127.0.0.1:8002", alias="RISK_ENGINE_URL")
+    investigator_url: str = Field(default="http://127.0.0.1:8003", alias="INVESTIGATOR_URL")
+    warn_escalate_url: str = Field(default="http://127.0.0.1:8004", alias="WARN_ESCALATE_URL")
+    review_report_url: str = Field(default="http://127.0.0.1:8005", alias="REVIEW_REPORT_URL")
 
     # Service Ports (Phase A uvicorn processes)
     capture_detect_port: int = Field(default=8001, alias="CAPTURE_DETECT_PORT")

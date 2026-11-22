@@ -109,6 +109,7 @@ def register_calibration(payload: CalibrationPayload):
     baseline.gaze_threshold = max(0.25, payload.mean_gaze_offset + 0.20)
     baseline.yaw_threshold = max(18.0, payload.mean_head_yaw + 15.0)
     baseline.pitch_threshold = max(15.0, payload.mean_head_pitch + 12.0)
+    detector.save_baseline(payload.session_id, baseline)
     logger.info(f"Registered personal calibration baseline for session: {payload.session_id}")
     return {"status": "calibrated", "session_id": payload.session_id}
 
@@ -138,7 +139,7 @@ def ingest_features(batch: FeatureBatch):
             case_opened = False
             try:
                 inv_res = http_client.post(
-                    f"http://127.0.0.1:{settings.investigator_port}/evaluate",
+                    f"{settings.investigator_url}/evaluate",
                     json=obs.model_dump(),
                 )
                 if inv_res.status_code == 200 and inv_res.json().get("case_opened"):
@@ -149,7 +150,7 @@ def ingest_features(batch: FeatureBatch):
             if not case_opened:
                 try:
                     http_client.post(
-                        f"http://127.0.0.1:{settings.risk_engine_port}/observe",
+                        f"{settings.risk_engine_url}/observe",
                         json=obs.model_dump(),
                     )
                 except Exception as e:
@@ -158,12 +159,12 @@ def ingest_features(batch: FeatureBatch):
         # 3. Check updated score and evaluate tier gating
         try:
             state_res = http_client.get(
-                f"http://127.0.0.1:{settings.risk_engine_port}/state/{batch.session_id}"
+                f"{settings.risk_engine_url}/state/{batch.session_id}"
             )
             if state_res.status_code == 200:
                 risk_state = state_res.json()
                 http_client.post(
-                    f"http://127.0.0.1:{settings.warn_escalate_port}/evaluate",
+                    f"{settings.warn_escalate_url}/evaluate",
                     json={
                         "session_id": batch.session_id,
                         "score": risk_state["total_score"],

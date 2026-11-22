@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Custodian AI - EDGE stack (DISPOSABLE). A CloudFront "front door" that gives the app a free
+  HTTPS address (https://xxxx.cloudfront.net). Browsers only allow the webcam on HTTPS pages.
+  Created by the "deploy" workflow after the app's load balancer exists.
+
+Parameters:
+  OriginDomain:
+    Type: String
+    Description: Host name of the Kubernetes load balancer (without http://)
+
+Resources:
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: custodian-demo
+        PriceClass: PriceClass_100
+        HttpVersion: http2
+        Origins:
+          - Id: app
+            DomainName: !Ref OriginDomain
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              HTTPPort: 80
+              OriginReadTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: app
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          # AWS managed policies "CachingDisabled" and "AllViewer" (the app is dynamic, nothing is cached)
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+
+Outputs:
+  Url:
+    Value: !Sub "https://${Distribution.DomainName}"
