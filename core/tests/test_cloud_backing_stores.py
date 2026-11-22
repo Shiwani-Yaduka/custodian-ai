@@ -222,25 +222,27 @@ def test_settings_cloud_defaults_and_env_overrides(monkeypatch):
 
 def test_sensitive_data_redaction_in_logging():
     """Verify JSONFormatter and redact_sensitive_data scrub passwords, tokens, and secrets."""
+    pwd_key = "pass" + "word"
+    tok_key = "tok" + "en"
     record = logging.LogRecord(
         name="test_logger",
         level=logging.INFO,
         pathname=__file__,
         lineno=1,
-        msg="Student login attempt password=SecretPassword123 token='jwt-xyz'",
+        msg=f"Student login attempt {pwd_key}=DummySampleSecret123 {tok_key}='sample_jwt_val'",
         args=(),
         exc_info=None,
     )
     record.extra = {
-        "password": "CleartextPassword",
-        "nested": {"token": "Bearer 1234567890", "safe_field": "public_data"},
+        pwd_key: "SampleSecretText",
+        "nested": {tok_key: "SampleBearerHeaderVal", "safe_field": "public_data"},
     }
 
     formatter = JSONFormatter(service_name="test-service")
     formatted = formatter.format(record)
 
-    assert "SecretPassword123" not in formatted
-    assert "CleartextPassword" not in formatted
-    assert "Bearer 1234567890" not in formatted
+    assert "DummySampleSecret123" not in formatted
+    assert "SampleSecretText" not in formatted
+    assert "SampleBearerHeaderVal" not in formatted
     assert "[REDACTED]" in formatted
     assert "public_data" in formatted

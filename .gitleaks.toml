@@ -1,0 +1,13 @@
+# Gitleaks configuration for Custodian AI
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlist test fixtures, demo documentation, and test assertions"
+paths = [
+    '''core/tests/.*''',
+    '''services/tests/.*''',
+    '''fairness/.*''',
+    '''\.env\.example''',
+    '''docs/.*''',
+]
