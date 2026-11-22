@@ -15,6 +15,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Upgrade OS base packages and Python build tooling to eliminate known base-image CVEs (zlib1g, setuptools, wheel)
+RUN apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get install --no-install-recommends -y zlib1g && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    rm -rf /usr/local/lib/python3.11/ensurepip
+
 # Install libraries first: Docker reuses this layer when only your code changes (faster builds).
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt

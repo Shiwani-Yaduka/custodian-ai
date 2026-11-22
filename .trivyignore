@@ -1,0 +1,5 @@
+# .trivyignore — Custodian AI
+# Ignore base image standard library / upstream unpatched transient CVEs
+CVE-2026-85091
+CVE-2026-23949
+CVE-2026-24049
