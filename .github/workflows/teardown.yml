@@ -24,7 +24,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check if AWS is configured
+        id: check_aws
+        run: |
+          if [ -z "${{ vars.AWS_ROLE_ARN }}" ]; then
+            echo "AWS_ROLE_ARN is not set. No AWS resources to tear down. Skipping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Log in to AWS (OIDC, no keys)
+        if: steps.check_aws.outputs.configured == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
@@ -32,10 +43,11 @@ jobs:
           role-duration-seconds: 7200
 
       - name: Delete everything
+        if: steps.check_aws.outputs.configured == 'true'
         run: bash scripts/aws/teardown.sh 2>&1 | tee teardown.log
 
       - name: Show the result
-        if: always()
+        if: always() && steps.check_aws.outputs.configured == 'true'
         run: |
           {
             echo "## Teardown result"

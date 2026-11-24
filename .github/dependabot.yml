@@ -13,6 +13,8 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: python
   - package-ecosystem: docker
     directory: /web
     schedule: { interval: weekly }
