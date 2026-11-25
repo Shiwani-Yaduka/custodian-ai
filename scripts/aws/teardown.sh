@@ -53,8 +53,22 @@ if stack_exists custodian-cluster; then
 
   echo "== 3/4  Delete the cluster stack (EKS + nodes + network). This takes 10-15 minutes."
   if ! delete_stack custodian-cluster; then
-    echo "First attempt failed. Removing leftover load-balancer security groups and retrying..."
+    echo "First attempt failed. Cleaning up leftover network interfaces and security groups..."
     if [ -n "$VPC" ] && [ "$VPC" != "None" ]; then
+      # Delete leftover network interfaces (ENIs) created by the load balancer or EKS
+      for eni in $(aws ec2 describe-network-interfaces --filters Name=vpc-id,Values="$VPC" \
+                  --query "NetworkInterfaces[*].NetworkInterfaceId" --output text); do
+        echo "Cleaning up leftover ENI: $eni"
+        ATTACHMENT=$(aws ec2 describe-network-interfaces --network-interface-ids "$eni" \
+                     --query "NetworkInterfaces[0].Attachment.AttachmentId" --output text 2>/dev/null || true)
+        if [ -n "$ATTACHMENT" ] && [ "$ATTACHMENT" != "None" ]; then
+          aws ec2 detach-network-interface --attachment-id "$ATTACHMENT" --force || true
+          sleep 5
+        fi
+        aws ec2 delete-network-interface --network-interface-id "$eni" || true
+      done
+
+      # Delete leftover security groups created by the load balancer
       for sg in $(aws ec2 describe-security-groups --filters Name=vpc-id,Values="$VPC" \
                   --query "SecurityGroups[?starts_with(GroupName,'k8s-elb-')].GroupId" --output text); do
         aws ec2 delete-security-group --group-id "$sg" || true
