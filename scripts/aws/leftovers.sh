@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Lists everything that could still be costing money. READ-ONLY: it deletes nothing.
 # Run it in AWS CloudShell, or let the teardown workflow run it.
-export AWS_DEFAULT_REGION=us-east-1
+export AWS_DEFAULT_REGION=ap-southeast-2
 export AWS_PAGER=""
 
 echo "--- CloudFormation stacks (expect only: custodian-baseline)"

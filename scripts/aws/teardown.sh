@@ -4,7 +4,7 @@
 #     bash scripts/aws/teardown.sh
 # The baseline stack (evidence bucket, roles, secrets) is NOT touched.
 set -uo pipefail
-export AWS_DEFAULT_REGION=us-east-1
+export AWS_DEFAULT_REGION=ap-southeast-2
 export AWS_PAGER=""
 CLUSTER=custodian-eks
 NS=custodian
