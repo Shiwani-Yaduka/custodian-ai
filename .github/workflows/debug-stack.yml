@@ -41,3 +41,17 @@ jobs:
             --region ap-southeast-2 \
             --query "StackEvents[?ResourceStatus=='CREATE_FAILED'].[LogicalResourceId,ResourceType,ResourceStatusReason]" \
             --output table || true
+
+      - name: Inspect Kubernetes Pods & Cluster State
+        run: |
+          aws eks update-kubeconfig --name custodian-eks --region ap-southeast-2 || exit 0
+          echo "=== Cluster Nodes ==="
+          kubectl get nodes -o wide || true
+          echo "=== Pods in custodian namespace ==="
+          kubectl get pods -n custodian -o wide || true
+          echo "=== Events in custodian namespace ==="
+          kubectl get events -n custodian --sort-by='.lastTimestamp' || true
+          echo "=== Describe Pods ==="
+          kubectl describe pods -n custodian || true
+          echo "=== Capture-Detect Logs (if any) ==="
+          kubectl logs -n custodian -l app=capture-detect --tail=50 || true

@@ -22,6 +22,7 @@ on:
 permissions:
   id-token: write   # lets the job log in to AWS with OIDC (no stored keys)
   contents: read
+  packages: read
 
 concurrency:
   group: custodian-demo
@@ -115,6 +116,17 @@ jobs:
       - name: Create secrets inside the cluster
         run: |
           kubectl create namespace custodian --dry-run=client -o yaml | kubectl apply -f -
+
+          # Configure GHCR credentials so EKS nodes can pull private images from ghcr.io
+          kubectl -n custodian create secret docker-registry ghcr-secret \
+            --docker-server=ghcr.io \
+            --docker-username="${{ github.actor }}" \
+            --docker-password="${{ secrets.GITHUB_TOKEN }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl -n custodian patch serviceaccount default \
+            -p '{"imagePullSecrets": [{"name": "ghcr-secret"}]}'
+
           DB_PASS=$(aws secretsmanager get-secret-value --secret-id custodian/db-password --query SecretString --output text)
           GRAFANA_PASS=$(aws secretsmanager get-secret-value --secret-id custodian/grafana-admin --query SecretString --output text)
           JWT=$(openssl rand -hex 32)
@@ -190,7 +202,15 @@ jobs:
       - name: If something failed
         if: failure()
         run: |
+          echo "=== Pods in custodian namespace ==="
+          kubectl get pods -n custodian -o wide || true
+          echo "=== Recent Events in custodian namespace ==="
+          kubectl get events -n custodian --sort-by='.lastTimestamp' | tail -30 || true
+          echo "=== Describe failing pods ==="
+          kubectl describe pods -n custodian || true
+          echo "=== Logs of capture-detect ==="
+          kubectl logs -n custodian -l app=capture-detect --tail=50 || true
           {
             echo "## Deploy FAILED"
-            echo "Resources may already exist and cost money. Run the 'Teardown (stop)' workflow, then fix the problem and deploy again."
+            echo "Resources may already exist and cost money. Check the step logs above for pod status."
           } >> "$GITHUB_STEP_SUMMARY"
