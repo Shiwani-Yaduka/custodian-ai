@@ -173,7 +173,9 @@ Resources:
                   - iam:UpdateAssumeRolePolicy
                   - iam:ListRolePolicies
                   - iam:ListAttachedRolePolicies
-                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/custodian-eks-*"
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/custodian-eks-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/aws-service-role/*"
               - Sid: AttachOnlyTheFourEksPolicies
                 Effect: Allow
                 Action:
