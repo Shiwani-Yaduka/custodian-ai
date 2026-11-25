@@ -139,8 +139,9 @@ Resources:
             Condition:
               StringEquals:
                 "token.actions.githubusercontent.com:aud": sts.amazonaws.com
-                # Only workflows running on the main branch of YOUR repo may use this role.
-                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubOwner}/${GitHubRepo}:ref:refs/heads/main"
+              StringLike:
+                # Support both legacy (repo:owner/repo:...) and immutable (repo:owner@id/repo@id:...) formats
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubOwner}*/${GitHubRepo}*:ref:refs/heads/main"
       Policies:
         - PolicyName: custodian-deploy
           PolicyDocument:
