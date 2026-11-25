@@ -167,15 +167,16 @@ Resources:
                 Action:
                   - iam:CreateRole
                   - iam:DeleteRole
-                  - iam:GetRole
                   - iam:TagRole
                   - iam:UntagRole
                   - iam:UpdateAssumeRolePolicy
                   - iam:ListRolePolicies
                   - iam:ListAttachedRolePolicies
-                Resource:
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/custodian-eks-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/aws-service-role/*"
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/custodian-eks-*"
+              - Sid: AllowReadRoles
+                Effect: Allow
+                Action: iam:GetRole
+                Resource: "*"
               - Sid: AttachOnlyTheFourEksPolicies
                 Effect: Allow
                 Action:
