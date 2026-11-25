@@ -151,6 +151,35 @@ Resources:
         EndpointPublicAccess: true
         EndpointPrivateAccess: false
 
+  NodeLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        InstanceType: !Ref NodeInstanceType
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeSize: 20
+              VolumeType: gp3
+              DeleteOnTermination: true
+        UserData:
+          Fn::Base64: !Sub |
+            MIME-Version: 1.0
+            Content-Type: application/node.eks.aws
+
+            ---
+            apiVersion: node.eks.aws/v1alpha1
+            kind: NodeConfig
+            spec:
+              cluster:
+                name: ${Cluster}
+                apiServerEndpoint: ${Cluster.Endpoint}
+                certificateAuthority: ${Cluster.CertificateAuthorityData}
+                cidr: 172.20.0.0/16
+              kubelet:
+                config:
+                  maxPods: 20
+
   NodeGroup:
     Type: AWS::EKS::Nodegroup
     Properties:
@@ -162,9 +191,9 @@ Resources:
         - !Ref SubnetB
       AmiType: AL2023_x86_64_STANDARD
       CapacityType: ON_DEMAND
-      InstanceTypes:
-        - !Ref NodeInstanceType
-      DiskSize: 20
+      LaunchTemplate:
+        Id: !Ref NodeLaunchTemplate
+        Version: !GetAtt NodeLaunchTemplate.LatestVersionNumber
       ScalingConfig:
         MinSize: !Ref NodeCount
         MaxSize: !Ref NodeCount

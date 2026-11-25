@@ -210,6 +210,7 @@ jobs:
           kubectl describe pods -n custodian || true
           echo "=== Logs of capture-detect ==="
           kubectl logs -n custodian -l app=capture-detect --tail=50 || true
+          kubectl logs -n custodian -l app=capture-detect --previous --tail=50 || true
           {
             echo "## Deploy FAILED"
             echo "Resources may already exist and cost money. Check the step logs above for pod status."

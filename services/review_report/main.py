@@ -57,7 +57,10 @@ app.add_middleware(
 )
 
 repo = SQLAlchemyLedgerRepository(database_url=settings.database_url)
-repo.init_db()
+try:
+    repo.init_db()
+except Exception as e:
+    logger.warning(f"Initial database initialization deferred: {e}")
 
 security = HTTPBearer(auto_error=False)
 

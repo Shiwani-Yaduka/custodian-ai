@@ -47,7 +47,10 @@ app.add_middleware(
 
 detector = CalibrationDetector()
 repo = SQLAlchemyLedgerRepository(database_url=settings.database_url)
-repo.init_db()
+try:
+    repo.init_db()
+except Exception as e:
+    logger.warning(f"Initial database initialization deferred: {e}")
 http_client = httpx.Client(timeout=0.6)
 
 

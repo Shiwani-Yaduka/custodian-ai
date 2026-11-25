@@ -52,7 +52,10 @@ app.add_middleware(
 )
 
 repo = SQLAlchemyLedgerRepository(database_url=settings.database_url)
-repo.init_db()
+try:
+    repo.init_db()
+except Exception as e:
+    logger.warning(f"Initial database initialization deferred: {e}")
 
 inv_policy = load_investigator_policy()
 # Default runner for automated background probes
