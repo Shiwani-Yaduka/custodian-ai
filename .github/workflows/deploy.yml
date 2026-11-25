@@ -76,12 +76,11 @@ jobs:
           OVERRIDES=(ClusterName="$CLUSTER_NAME" KubernetesVersion="$K8S_VERSION")
           if [ -n "$MY_ARN" ]; then OVERRIDES+=(ExtraAdminArn="$MY_ARN"); fi
 
-          # If a previous failed creation left the stack in ROLLBACK_COMPLETE, delete it first
+          # If a previous failed run left the stack in a failed state, clean it up autonomously first
           STATUS=$(aws cloudformation describe-stacks --stack-name custodian-cluster --region "$AWS_REGION" --query "Stacks[0].StackStatus" --output text 2>/dev/null || true)
-          if [ "$STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STATUS" = "ROLLBACK_FAILED" ]; then
-            echo "Found previous stack in $STATUS. Deleting before redeploying..."
-            aws cloudformation delete-stack --stack-name custodian-cluster --region "$AWS_REGION"
-            aws cloudformation wait stack-delete-complete --stack-name custodian-cluster --region "$AWS_REGION"
+          if [ "$STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STATUS" = "ROLLBACK_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
+            echo "Found previous stack in $STATUS. Running autonomous teardown before deploying..."
+            bash scripts/aws/teardown.sh || true
             echo "Previous stack cleaned up successfully."
           fi
 
