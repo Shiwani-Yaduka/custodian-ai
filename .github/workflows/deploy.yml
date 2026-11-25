@@ -78,7 +78,12 @@ jobs:
 
           # If a previous failed run left the stack in a failed state, clean it up autonomously first
           STATUS=$(aws cloudformation describe-stacks --stack-name custodian-cluster --region "$AWS_REGION" --query "Stacks[0].StackStatus" --output text 2>/dev/null || true)
-          if [ "$STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STATUS" = "ROLLBACK_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
+          if [ "$STATUS" = "ROLLBACK_IN_PROGRESS" ]; then
+            echo "Stack is in ROLLBACK_IN_PROGRESS. Waiting for rollback to complete..."
+            aws cloudformation wait stack-rollback-complete --stack-name custodian-cluster --region "$AWS_REGION" 2>/dev/null || true
+            STATUS=$(aws cloudformation describe-stacks --stack-name custodian-cluster --region "$AWS_REGION" --query "Stacks[0].StackStatus" --output text 2>/dev/null || true)
+          fi
+          if [[ "$STATUS" == *"ROLLBACK"* ]] || [[ "$STATUS" == *"FAILED"* ]]; then
             echo "Found previous stack in $STATUS. Running autonomous teardown before deploying..."
             bash scripts/aws/teardown.sh || true
             echo "Previous stack cleaned up successfully."

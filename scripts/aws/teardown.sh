@@ -113,11 +113,17 @@ if [ -n "$VPC" ] && [ "$VPC" != "None" ]; then
       aws ec2 delete-network-interface --network-interface-id "$eni" 2>/dev/null || true
     done
 
-    # Delete all subnets in the VPC
+    # Delete all subnets in the VPC with retry (in case EKS is finishing ENI release)
     for sub in $(aws ec2 describe-subnets --filters Name=vpc-id,Values="$VPC" \
                 --query "Subnets[*].SubnetId" --output text 2>/dev/null || true); do
       echo "  Deleting Subnet: $sub"
-      aws ec2 delete-subnet --subnet-id "$sub" 2>/dev/null || true
+      for attempt in $(seq 1 15); do
+        if aws ec2 delete-subnet --subnet-id "$sub" 2>/dev/null; then
+          echo "    Subnet $sub deleted."
+          break
+        fi
+        sleep 4
+      done
     done
 
     # Detach & delete internet gateways
@@ -142,10 +148,15 @@ if [ -n "$VPC" ] && [ "$VPC" != "None" ]; then
       aws ec2 delete-security-group --group-id "$sg" 2>/dev/null || true
     done
 
-    # Delete the VPC itself
+    # Delete the VPC itself with retry
     echo "  Deleting VPC: $VPC"
-    aws ec2 delete-vpc --vpc-id "$VPC" 2>/dev/null || true
-    echo "VPC $VPC successfully eliminated."
+    for attempt in $(seq 1 10); do
+      if aws ec2 delete-vpc --vpc-id "$VPC" 2>/dev/null; then
+        echo "VPC $VPC successfully eliminated."
+        break
+      fi
+      sleep 4
+    done
   fi
 fi
 
