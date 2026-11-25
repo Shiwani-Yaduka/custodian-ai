@@ -82,6 +82,16 @@ jobs:
             --parameter-overrides "${OVERRIDES[@]}" \
             --tags project=custodian env=demo expires-at="$EXPIRES"
 
+      - name: Show failure events if cluster creation failed
+        if: failure()
+        run: |
+          echo "=== Failed Resources in custodian-cluster ==="
+          aws cloudformation describe-stack-events \
+            --stack-name "$CLUSTER_NAME" \
+            --region "$AWS_REGION" \
+            --query "StackEvents[?ResourceStatus=='CREATE_FAILED'].[LogicalResourceId,ResourceType,ResourceStatusReason]" \
+            --output table || true
+
       - name: Connect kubectl to the cluster
         run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
 
