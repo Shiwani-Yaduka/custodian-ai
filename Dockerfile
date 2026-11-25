@@ -15,10 +15,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Upgrade OS base packages and Python build tooling to eliminate known base-image CVEs (zlib1g, setuptools, wheel)
+# Upgrade OS base packages and Python build tooling to eliminate known base-image CVEs (zlib1g, libzstd1, setuptools, wheel)
 RUN apt-get update && \
     apt-get upgrade -y --no-install-recommends && \
-    apt-get install --no-install-recommends -y zlib1g && \
+    apt-get install --no-install-recommends -y zlib1g libzstd1 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     pip install --no-cache-dir --upgrade pip setuptools wheel && \
