@@ -74,6 +74,16 @@ jobs:
           EXPIRES=$(date -u -d '+5 hours' +%Y-%m-%dT%H:%M:%SZ)
           OVERRIDES=(ClusterName="$CLUSTER_NAME" KubernetesVersion="$K8S_VERSION")
           if [ -n "$MY_ARN" ]; then OVERRIDES+=(ExtraAdminArn="$MY_ARN"); fi
+
+          # If a previous failed creation left the stack in ROLLBACK_COMPLETE, delete it first
+          STATUS=$(aws cloudformation describe-stacks --stack-name custodian-cluster --region "$AWS_REGION" --query "Stacks[0].StackStatus" --output text 2>/dev/null || true)
+          if [ "$STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STATUS" = "ROLLBACK_FAILED" ]; then
+            echo "Found previous stack in $STATUS. Deleting before redeploying..."
+            aws cloudformation delete-stack --stack-name custodian-cluster --region "$AWS_REGION"
+            aws cloudformation wait stack-delete-complete --stack-name custodian-cluster --region "$AWS_REGION"
+            echo "Previous stack cleaned up successfully."
+          fi
+
           aws cloudformation deploy \
             --stack-name custodian-cluster \
             --template-file infra/cluster.yaml \
@@ -87,13 +97,17 @@ jobs:
         run: |
           echo "=== Failed Resources in custodian-cluster ==="
           aws cloudformation describe-stack-events \
-            --stack-name "$CLUSTER_NAME" \
+            --stack-name custodian-cluster \
             --region "$AWS_REGION" \
             --query "StackEvents[?ResourceStatus=='CREATE_FAILED'].[LogicalResourceId,ResourceType,ResourceStatusReason]" \
             --output table || true
 
       - name: Connect kubectl to the cluster
-        run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+        run: |
+          aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+          echo "Enabling prefix delegation on VPC CNI for higher pod density..."
+          kubectl set env daemonset aws-node -n kube-system ENABLE_PREFIX_DELEGATION=true
+          kubectl set env daemonset aws-node -n kube-system WARM_PREFIX_TARGET=1
 
       - name: Install metrics-server (needed by the autoscaler)
         run: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml

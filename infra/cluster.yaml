@@ -14,10 +14,10 @@ Parameters:
     Description: Must be a version in STANDARD support (check the EKS console). Old versions cost 6x more.
   NodeInstanceType:
     Type: String
-    Default: t3.medium
+    Default: t3.micro
   NodeCount:
     Type: Number
-    Default: 2
+    Default: 3
   ExtraAdminArn:
     Type: String
     Default: ""

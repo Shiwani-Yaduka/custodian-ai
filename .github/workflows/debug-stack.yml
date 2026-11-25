@@ -18,11 +18,26 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ap-southeast-2
           role-duration-seconds: 900
+      - name: Query Free Tier Eligible Instance Types
+        run: |
+          echo "=== Free Tier Eligible Instance Types in ap-southeast-2 ==="
+          aws ec2 describe-instance-types \
+            --region ap-southeast-2 \
+            --filters Name=free-tier-eligible,Values=true \
+            --query "InstanceTypes[*].[InstanceType,VCpuInfo.DefaultVCpus,MemoryInfo.SizeInMiB]" \
+            --output table
       - name: Describe Stack Events
         run: |
+          echo "=== Stack Status ==="
+          aws cloudformation describe-stacks \
+            --stack-name custodian-cluster \
+            --region ap-southeast-2 \
+            --query "Stacks[0].[StackName,StackStatus,StackStatusReason]" \
+            --output table || echo "Stack does not exist or has been deleted."
+
           echo "=== Failed Resources in custodian-cluster ==="
           aws cloudformation describe-stack-events \
             --stack-name custodian-cluster \
             --region ap-southeast-2 \
             --query "StackEvents[?ResourceStatus=='CREATE_FAILED'].[LogicalResourceId,ResourceType,ResourceStatusReason]" \
-            --output table
+            --output table || true
