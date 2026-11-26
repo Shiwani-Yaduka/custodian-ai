@@ -108,11 +108,7 @@ jobs:
             --output table || true
 
       - name: Connect kubectl to the cluster
-        run: |
-          aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
-          echo "Enabling prefix delegation on VPC CNI for higher pod density..."
-          kubectl set env daemonset aws-node -n kube-system ENABLE_PREFIX_DELEGATION=true
-          kubectl set env daemonset aws-node -n kube-system WARM_PREFIX_TARGET=1
+        run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
 
       - name: Install metrics-server (needed by the autoscaler)
         run: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
@@ -148,7 +144,15 @@ jobs:
         run: |
           kubectl -n custodian delete job seed --ignore-not-found
           export IMAGE_PREFIX IMAGE_TAG
-          for f in k8s/*.yaml; do
+
+          echo "Applying data stores (Postgres & Redis)..."
+          envsubst '${IMAGE_PREFIX} ${IMAGE_TAG}' < k8s/01-data.yaml | kubectl apply -f -
+          echo "Waiting for data tier to become ready..."
+          kubectl -n custodian rollout status deployment/postgres --timeout=120s
+          kubectl -n custodian rollout status deployment/redis --timeout=120s
+
+          echo "Applying services, web front-end, and monitoring..."
+          for f in k8s/02-services.yaml k8s/03-web.yaml k8s/04-monitoring.yaml; do
             echo "applying $f"
             envsubst '${IMAGE_PREFIX} ${IMAGE_TAG}' < "$f" | kubectl apply -f -
           done
@@ -210,11 +214,14 @@ jobs:
           kubectl get pods -n custodian -o wide || true
           echo "=== Recent Events in custodian namespace ==="
           kubectl get events -n custodian --sort-by='.lastTimestamp' | tail -30 || true
+          echo "=== Container Logs (Previous & Current) ==="
+          for app in capture-detect risk-engine investigator warn-escalate review-report seed; do
+            echo "--- Logs for $app ---"
+            kubectl logs -n custodian -l app=$app --tail=30 || true
+            kubectl logs -n custodian -l app=$app --previous --tail=30 || true
+          done
           echo "=== Describe failing pods ==="
           kubectl describe pods -n custodian || true
-          echo "=== Logs of capture-detect ==="
-          kubectl logs -n custodian -l app=capture-detect --tail=50 || true
-          kubectl logs -n custodian -l app=capture-detect --previous --tail=50 || true
           {
             echo "## Deploy FAILED"
             echo "Resources may already exist and cost money. Check the step logs above for pod status."

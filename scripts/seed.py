@@ -26,7 +26,18 @@ def seed_demo_data(database_url: str | None = None) -> None:
     print(f"[seed] Initializing database at: {db_url}")
 
     repo = SQLAlchemyLedgerRepository(database_url=db_url)
-    repo.init_db()
+    # Retry database initialization to handle PostgreSQL startup delay
+    for attempt in range(1, 31):
+        try:
+            repo.init_db()
+            print("[seed] Database initialized successfully.")
+            break
+        except Exception as e:
+            if attempt == 30:
+                print(f"[seed] Database failed to initialize after 30 attempts: {e}")
+                raise
+            print(f"[seed] Database not ready yet (attempt {attempt}/30): {e}. Retrying in 2s...")
+            time.sleep(2)
 
     # 1. Seed Demo Accounts
     accounts = [

@@ -14,10 +14,10 @@ Parameters:
     Description: Must be a version in STANDARD support (check the EKS console). Old versions cost 6x more.
   NodeInstanceType:
     Type: String
-    Default: t3.micro
+    Default: t3.medium
   NodeCount:
     Type: Number
-    Default: 3
+    Default: 2
   ExtraAdminArn:
     Type: String
     Default: ""
@@ -203,6 +203,17 @@ Resources:
         MinSize: !Ref NodeCount
         MaxSize: !Ref NodeCount
         DesiredSize: !Ref NodeCount
+
+  # Grant console access to account administrator / root so AWS console shows Pods and Nodes
+  ConsoleAdminAccess:
+    Type: AWS::EKS::AccessEntry
+    Properties:
+      ClusterName: !Ref Cluster
+      PrincipalArn: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+      AccessPolicies:
+        - PolicyArn: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+          AccessScope:
+            Type: cluster
 
   # Optional: lets YOU run kubectl from CloudShell
   ExtraAdminAccess:
